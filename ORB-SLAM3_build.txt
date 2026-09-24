@@ -1,0 +1,38 @@
+参考
+
+https://github.com/UZ-SLAMLab/ORB_SLAM3?tab=readme-ov-file
+
+https://blog.csdn.net/weixin_28221501/article/details/165480772?ops_request_misc=&request_id=&biz_id=102&utm_term=orb-slam3%E7%BC%96%E8%AF%91&utm_medium=distribute.pc_search_result.none-task-blog-2~all~sobaiduweb~default-3-165480772.142^v102^pc_search_result_base8&spm=1018.2226.3001.4187
+
+
+
+当前系统
+
+Ubuntu22.04，已安装 ROS Humble，建议先验证所需的依赖是否已有
+
+
+
+核心依赖库及版本
+
+DBoW2、g2o、Sophus（源代码的 Thirdparty 下有修改过的）
+
+Opencv 4.5.4（系统自带）
+
+Eigen3 3.4.0（系统自带）
+
+Pangolin 0.8（手动安装）
+安装
+cd ~/your_path
+git clone https://github.com/stevenlovegrove/Pangolin.git
+cd Pangolin
+git checkout v0.6
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+sudo make install
+验证
+pkg-config --modversion pangolin
+ls /usr/local/lib/libpango*.so
+ls /usr/local/include/pangolin
+
+
