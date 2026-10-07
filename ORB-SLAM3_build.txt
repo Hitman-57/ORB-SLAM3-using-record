@@ -36,3 +36,42 @@ ls /usr/local/lib/libpango*.so
 ls /usr/local/include/pangolin
 
 
+
+测试
+
+EuRoC 数据集
+https://www.research-collection.ethz.ch/entities/researchdata/bcaf173e-5dac-484b-bc37-faf97a594f1f
+TUM_VI 数据集
+https://cvg.cit.tum.de/data/datasets/visual-inertial-dataset
+
+TUM_VI 的 dataset-magistrale1_512_16 数据，模式为 Stereo-Inertial
+./可执行文件 \
+参数1：ORB词袋 \
+参数2：配置参数 \
+参数3：左相机图像 \
+参数4：右相机图像 \
+参数5：图像时间戳 \
+参数6：IMU数据 \
+参数7：轨迹文件名（可选）
+./Examples/Stereo-Inertial/stereo_inertial_tum_vi \
+Vocabulary/ORBvoc.txt \
+Examples/Stereo-Inertial/TUM-VI.yaml \
+~/code/ORB-SLAM3/dataset/TUM_VI/dataset-magistrale1_512_16/mav0/cam0/data \
+~/code/ORB-SLAM3/dataset/TUM_VI/dataset-magistrale1_512_16/mav0/cam1/data \
+Examples/Stereo-Inertial/TUM_TimeStamps/dataset-magistrale1_512.txt \
+Examples/Stereo-Inertial/TUM_IMU/dataset-magistrale1_512.txt
+
+EuRoC 的 MH_03_medium 数据，模式为 Stereo-Inertial
+./可执行文件 \
+参数1：ORB词袋 \
+参数2：配置参数 \
+参数3：数据文件夹 \
+参数4：图像时间戳 \
+参数5：轨迹文件名（可选）
+./Examples/Stereo-Inertial/stereo_inertial_euroc \
+Vocabulary/ORBvoc.txt \
+Examples/Stereo-Inertial/EuRoC.yaml \
+~/code/ORB-SLAM3/dataset/EuRoC/machine_hall/MH_03_medium \
+Examples/Stereo-Inertial/EuRoC_TimeStamps/MH03.txt
+
+
