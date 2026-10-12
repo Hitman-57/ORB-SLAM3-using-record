@@ -40,7 +40,7 @@ namespace ORB_SLAM3
 Verbose::eLevel Verbose::th = Verbose::VERBOSITY_NORMAL;  // 初始化静态成员变量 th
 
 // system 类
-// system 函数定义
+// SLAM 系统初始化（词袋文件路径，参数文件路径，传感器类型，是否使用可视化，初始帧数，序列名称），启动局部建图、回环检测和可视化线程
 System::System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor,
                const bool bUseViewer, const int initFr, const string &strSequence):
     // 初始化 private 中的部分变量（mSensor 传感器类型 sensor，mpViewer 可视化器指针置空，bool 类型的标志设为 false）
@@ -82,10 +82,10 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     // 判断配置文件版本
     cv::FileNode node = fsSettings["File.version"];
     if(!node.empty() && node.isString() && node.string() == "1.0"){
-        settings_ = new Settings(strSettingsFile,mSensor);
+        settings_ = new Settings(strSettingsFile,mSensor); // 解析配置参数，创建 settings_ 对象
 
-        mStrLoadAtlasFromFile = settings_->atlasLoadFile();
-        mStrSaveAtlasToFile = settings_->atlasSaveFile();
+        mStrLoadAtlasFromFile = settings_->atlasLoadFile(); // Altas 地图集加载地址
+        mStrSaveAtlasToFile = settings_->atlasSaveFile();   // Altas 地图保存载地址
 
         cout << (*settings_) << endl;
     }
@@ -112,19 +112,17 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
         activeLC = static_cast<int>(fsSettings["loopClosing"]) != 0;
     }
 
-    mStrVocabularyFilePath = strVocFile; // 保存词袋文件路径
+    mStrVocabularyFilePath = strVocFile; // 词袋文件路径
 
     bool loadedAtlas = false;
 
-    // 加载词袋并创建关键帧数据库
-    // 创建或加载（如果有） Altas 地图集
-    if(mStrLoadAtlasFromFile.empty())
+    if(mStrLoadAtlasFromFile.empty()) // 创建 Altas 地图集
     {
         //Load ORB Vocabulary
         cout << endl << "Loading ORB Vocabulary. This could take a while..." << endl;
 
         mpVocabulary = new ORBVocabulary();
-        bool bVocLoad = mpVocabulary->loadFromTextFile(strVocFile);
+        bool bVocLoad = mpVocabulary->loadFromTextFile(strVocFile); // 加载词袋
         if(!bVocLoad)
         {
             cerr << "Wrong path to vocabulary. " << endl;
@@ -134,13 +132,13 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
         cout << "Vocabulary loaded!" << endl << endl;
 
         //Create KeyFrame Database
-        mpKeyFrameDatabase = new KeyFrameDatabase(*mpVocabulary);
+        mpKeyFrameDatabase = new KeyFrameDatabase(*mpVocabulary); // 创建关键帧数据集
 
         //Create the Atlas
         cout << "Initialization of Atlas from scratch " << endl;
         mpAtlas = new Atlas(0);
     }
-    else
+    else // 加载 Altas 地图集
     {
         //Load ORB Vocabulary
         cout << endl << "Loading ORB Vocabulary. This could take a while..." << endl;
@@ -186,13 +184,12 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
         //usleep(10*1000*1000);
     }
 
-    // 是否为 IMU 模式
-    if (mSensor==IMU_STEREO || mSensor==IMU_MONOCULAR || mSensor==IMU_RGBD)
+    if (mSensor==IMU_STEREO || mSensor==IMU_MONOCULAR || mSensor==IMU_RGBD) // 是否为 IMU 模式
         mpAtlas->SetInertialSensor();
 
-    // 创建帧绘制器和地图绘制器 Create Drawers. These are used by the Viewer
-    mpFrameDrawer = new FrameDrawer(mpAtlas);
-    mpMapDrawer = new MapDrawer(mpAtlas, strSettingsFile, settings_);
+    // Create Drawers. These are used by the Viewer
+    mpFrameDrawer = new FrameDrawer(mpAtlas);                           // 帧绘制器
+    mpMapDrawer = new MapDrawer(mpAtlas, strSettingsFile, settings_);   // 地图绘制器
 
     // 初始化跟踪线程 Initialize the Tracking thread
     //(it will live in the main thread of execution, the one that called this constructor)
@@ -200,16 +197,16 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     mpTracker = new Tracking(this, mpVocabulary, mpFrameDrawer, mpMapDrawer,
                              mpAtlas, mpKeyFrameDatabase, strSettingsFile, mSensor, settings_, strSequence);
 
-    // 初始化并启动局部建图线程 Initialize the Local Mapping thread and launch
+    // 初始化局部建图线程 Initialize the Local Mapping thread and launch
     mpLocalMapper = new LocalMapping(this, mpAtlas, mSensor==MONOCULAR || mSensor==IMU_MONOCULAR,
                                      mSensor==IMU_MONOCULAR || mSensor==IMU_STEREO || mSensor==IMU_RGBD, strSequence);
-    mptLocalMapping = new thread(&ORB_SLAM3::LocalMapping::Run,mpLocalMapper);
+    mptLocalMapping = new thread(&ORB_SLAM3::LocalMapping::Run,mpLocalMapper); // 启动局部建图线程
     mpLocalMapper->mInitFr = initFr;
-    if(settings_)
+    if(settings_) // 从 settings_ 中获取远点阈值
         mpLocalMapper->mThFarPoints = settings_->thFarPoints();
-    else
+    else // 从 fsSettings 中获取远点阈值
         mpLocalMapper->mThFarPoints = fsSettings["thFarPoints"];
-    if(mpLocalMapper->mThFarPoints!=0)
+    if(mpLocalMapper->mThFarPoints!=0) // mThFarPoints 非 0，设 mbFarPoints 为 true，丢弃距离相机超过阈值的点
     {
         cout << "Discard points further than " << mpLocalMapper->mThFarPoints << " m from current camera" << endl;
         mpLocalMapper->mbFarPoints = true;
@@ -217,12 +214,12 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     else
         mpLocalMapper->mbFarPoints = false;
 
-    // 初始化回环检测线程并启动 Initialize the Loop Closing thread and launch
+    // 初始化回环检测线程 Initialize the Loop Closing thread and launch
     // mSensor!=MONOCULAR && mSensor!=IMU_MONOCULAR
     mpLoopCloser = new LoopClosing(mpAtlas, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR, activeLC); // mSensor!=MONOCULAR);
-    mptLoopClosing = new thread(&ORB_SLAM3::LoopClosing::Run, mpLoopCloser);
+    mptLoopClosing = new thread(&ORB_SLAM3::LoopClosing::Run, mpLoopCloser); // 启动回环检测线程
 
-    // 设置线程间指针 Set pointers between threads
+    // 设置线程间指针，便于跨线程通信 Set pointers between threads
     mpTracker->SetLocalMapper(mpLocalMapper);
     mpTracker->SetLoopClosing(mpLoopCloser);
 
@@ -234,12 +231,12 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 
     //usleep(10*1000*1000);
 
-    // 初始化并启动可视化线程（可选） Initialize the Viewer thread and launch
+    // 初始化可视化线程（可选） Initialize the Viewer thread and launch
     if(bUseViewer)
     //if(false) // TODO
     {
-        mpViewer = new Viewer(this, mpFrameDrawer,mpMapDrawer,mpTracker,strSettingsFile,settings_);
-        mptViewer = new thread(&Viewer::Run, mpViewer);
+        mpViewer = new Viewer(this, mpFrameDrawer,mpMapDrawer,mpTracker,strSettingsFile,settings_); // 初始化可视化线程
+        mptViewer = new thread(&Viewer::Run, mpViewer); // 启动可视化线程
         mpTracker->SetViewer(mpViewer);
         mpLoopCloser->mpViewer = mpViewer;
         mpViewer->both = mpFrameDrawer->both;
