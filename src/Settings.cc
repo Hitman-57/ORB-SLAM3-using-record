@@ -18,119 +18,123 @@
 
 #include "Settings.h"
 
-#include "CameraModels/Pinhole.h"
-#include "CameraModels/KannalaBrandt8.h"
+#include "CameraModels/Pinhole.h"           // 针孔相机模型
+#include "CameraModels/KannalaBrandt8.h"    // 鱼眼相机模型
 
 #include "System.h"
 
-#include <opencv2/core/persistence.hpp>
-#include <opencv2/core/eigen.hpp>
+#include <opencv2/core/persistence.hpp>     // opencv 读写 YAML 库
+#include <opencv2/core/eigen.hpp>           // Eigen 转换工具
 
 #include <iostream>
+
+// 相机 1 为左相机，相机 2 为右相机
 
 using namespace std;
 
 namespace ORB_SLAM3 {
 
-    template<>
+    template<> // float 模板特化
     float Settings::readParameter<float>(cv::FileStorage& fSettings, const std::string& name, bool& found, const bool required){
-        cv::FileNode node = fSettings[name];
-        if(node.empty()){
-            if(required){
+        cv::FileNode node = fSettings[name]; // 从 fSettings 中取 name 节点
+        if(node.empty()){ // 参数为空
+            if(required){ // 需要该参数
                 std::cerr << name << " required parameter does not exist, aborting..." << std::endl;
                 exit(-1);
             }
-            else{
+            else{ // 不需要该参数
                 std::cerr << name << " optional parameter does not exist..." << std::endl;
                 found = false;
                 return 0.0f;
             }
         }
-        else if(!node.isReal()){
+        else if(!node.isReal()){ // 非实数
             std::cerr << name << " parameter must be a real number, aborting..." << std::endl;
             exit(-1);
         }
-        else{
+        else{ // 参数不为空且是实数
             found = true;
             return node.real();
         }
     }
 
-    template<>
+    template<> // int 模板特化
     int Settings::readParameter<int>(cv::FileStorage& fSettings, const std::string& name, bool& found, const bool required){
-        cv::FileNode node = fSettings[name];
-        if(node.empty()){
-            if(required){
+        cv::FileNode node = fSettings[name]; // 从 fSettings 中取 name 节点
+        if(node.empty()){ // 参数为空
+            if(required){ // 需要该参数
                 std::cerr << name << " required parameter does not exist, aborting..." << std::endl;
                 exit(-1);
             }
-            else{
+            else{ // 不需要该参数
                 std::cerr << name << " optional parameter does not exist..." << std::endl;
                 found = false;
                 return 0;
             }
         }
-        else if(!node.isInt()){
+        else if(!node.isInt()){ // 非 int 类型
             std::cerr << name << " parameter must be an integer number, aborting..." << std::endl;
             exit(-1);
         }
-        else{
+        else{ // 参数不为空且是 int
             found = true;
             return node.operator int();
         }
     }
 
-    template<>
+    template<> // string 模板特化
     string Settings::readParameter<string>(cv::FileStorage& fSettings, const std::string& name, bool& found, const bool required){
-        cv::FileNode node = fSettings[name];
-        if(node.empty()){
-            if(required){
+        cv::FileNode node = fSettings[name]; // 从 fSettings 中取 name 节点
+        if(node.empty()){ // 参数为空
+            if(required){ // 需要该参数
                 std::cerr << name << " required parameter does not exist, aborting..." << std::endl;
                 exit(-1);
             }
-            else{
+            else{ // 不需要该参数
                 std::cerr << name << " optional parameter does not exist..." << std::endl;
                 found = false;
                 return string();
             }
         }
-        else if(!node.isString()){
+        else if(!node.isString()){ // 非 string 类型
             std::cerr << name << " parameter must be a string, aborting..." << std::endl;
             exit(-1);
         }
-        else{
+        else{ // 参数不为空且是 string
             found = true;
             return node.string();
         }
     }
 
-    template<>
+    template<> // cv::Mat 模板特化
     cv::Mat Settings::readParameter<cv::Mat>(cv::FileStorage& fSettings, const std::string& name, bool& found, const bool required){
-        cv::FileNode node = fSettings[name];
-        if(node.empty()){
-            if(required){
+        cv::FileNode node = fSettings[name]; // 从 fSettings 中取 name 节点
+        if(node.empty()){ // 参数为空
+            if(required){ // 需要该参数
                 std::cerr << name << " required parameter does not exist, aborting..." << std::endl;
                 exit(-1);
             }
-            else{
+            else{ // 不需要该参数
                 std::cerr << name << " optional parameter does not exist..." << std::endl;
                 found = false;
                 return cv::Mat();
             }
         }
-        else{
+        else{ // 参数不为空
             found = true;
             return node.mat();
         }
     }
 
+    // 构造函数
     Settings::Settings(const std::string &configFile, const int& sensor) :
+    // 初始化 bool 标志变量为 false
     bNeedToUndistort_(false), bNeedToRectify_(false), bNeedToResize1_(false), bNeedToResize2_(false) {
-        sensor_ = sensor;
+        sensor_ = sensor; // 传感器类型
 
         //Open settings file
         cv::FileStorage fSettings(configFile, cv::FileStorage::READ);
-        if (!fSettings.isOpened()) {
+        if (!fSettings.isOpened()) { // 打开配置文件失败
             cerr << "[ERROR]: could not open configuration file at: " << configFile << endl;
             cerr << "Aborting..." << endl;
 
@@ -141,39 +145,40 @@ namespace ORB_SLAM3 {
         }
 
         //Read first camera
-        readCamera1(fSettings);
+        readCamera1(fSettings); // 读取相机 1 参数
         cout << "\t-Loaded camera 1" << endl;
 
         //Read second camera if stereo (not rectified)
-        if(sensor_ == System::STEREO || sensor_ == System::IMU_STEREO){
+        if(sensor_ == System::STEREO || sensor_ == System::IMU_STEREO){ // 读取相机 2 参数（双目）
             readCamera2(fSettings);
             cout << "\t-Loaded camera 2" << endl;
         }
 
         //Read image info
-        readImageInfo(fSettings);
+        readImageInfo(fSettings); // 读取图像信息（高宽、缩放、FPS等）
         cout << "\t-Loaded image info" << endl;
 
+        // 读取 IMU 噪声、采样率等（IMU 模式）
         if(sensor_ == System::IMU_MONOCULAR || sensor_ == System::IMU_STEREO || sensor_ == System::IMU_RGBD){
             readIMU(fSettings);
             cout << "\t-Loaded IMU calibration" << endl;
         }
 
-        if(sensor_ == System::RGBD || sensor_ == System::IMU_RGBD){
+        if(sensor_ == System::RGBD || sensor_ == System::IMU_RGBD){ // 深度相关参数（RGB-D）
             readRGBD(fSettings);
             cout << "\t-Loaded RGB-D calibration" << endl;
         }
 
-        readORB(fSettings);
+        readORB(fSettings); // ORB 特征提取相关参数
         cout << "\t-Loaded ORB settings" << endl;
-        readViewer(fSettings);
+        readViewer(fSettings); // 可视化设置相关参数
         cout << "\t-Loaded viewer settings" << endl;
-        readLoadAndSave(fSettings);
+        readLoadAndSave(fSettings); // Atlas 加载和保存
         cout << "\t-Loaded Atlas settings" << endl;
-        readOtherParameters(fSettings);
+        readOtherParameters(fSettings); // 其它
         cout << "\t-Loaded misc parameters" << endl;
 
-        if(bNeedToRectify_){
+        if(bNeedToRectify_){ // 需要双目较正
             precomputeRectificationMaps();
             cout << "\t-Computed rectification maps" << endl;
         }
@@ -181,17 +186,18 @@ namespace ORB_SLAM3 {
         cout << "----------------------------------" << endl;
     }
 
+    // readCamera1 函数定义，读取相机 1 参数
     void Settings::readCamera1(cv::FileStorage &fSettings) {
         bool found;
 
         //Read camera model
-        string cameraModel = readParameter<string>(fSettings,"Camera.type",found);
+        string cameraModel = readParameter<string>(fSettings,"Camera.type",found); // 读取相机类型
 
         vector<float> vCalibration;
-        if (cameraModel == "PinHole") {
+        if (cameraModel == "PinHole") { // 针孔相机
             cameraType_ = PinHole;
 
-            //Read intrinsic parameters
+            // 读取内参 Read intrinsic parameters
             float fx = readParameter<float>(fSettings,"Camera1.fx",found);
             float fy = readParameter<float>(fSettings,"Camera1.fy",found);
             float cx = readParameter<float>(fSettings,"Camera1.cx",found);
@@ -203,15 +209,15 @@ namespace ORB_SLAM3 {
             originalCalib1_ = new Pinhole(vCalibration);
 
             //Check if it is a distorted PinHole
-            readParameter<float>(fSettings,"Camera1.k1",found,false);
+            readParameter<float>(fSettings,"Camera1.k1",found,false); // 检查是否有畸变参数 k1（非必须）
             if(found){
-                readParameter<float>(fSettings,"Camera1.k3",found,false);
+                readParameter<float>(fSettings,"Camera1.k3",found,false); // 检查是否有畸变参数 k3（非必须）
                 if(found){
-                    vPinHoleDistorsion1_.resize(5);
+                    vPinHoleDistorsion1_.resize(5); // k1、k2、p1、p2、k3
                     vPinHoleDistorsion1_[4] = readParameter<float>(fSettings,"Camera1.k3",found);
                 }
                 else{
-                    vPinHoleDistorsion1_.resize(4);
+                    vPinHoleDistorsion1_.resize(4); // k1、k2、p1、p2
                 }
                 vPinHoleDistorsion1_[0] = readParameter<float>(fSettings,"Camera1.k1",found);
                 vPinHoleDistorsion1_[1] = readParameter<float>(fSettings,"Camera1.k2",found);
@@ -220,14 +226,15 @@ namespace ORB_SLAM3 {
             }
 
             //Check if we need to correct distortion from the images
+            // 单目，有畸变参数，开启去畸变
             if((sensor_ == System::MONOCULAR || sensor_ == System::IMU_MONOCULAR) && vPinHoleDistorsion1_.size() != 0){
                 bNeedToUndistort_ = true;
             }
         }
-        else if(cameraModel == "Rectified"){
+        else if(cameraModel == "Rectified"){ // 图像已校正
             cameraType_ = Rectified;
 
-            //Read intrinsic parameters
+            // 读取内参 Read intrinsic parameters
             float fx = readParameter<float>(fSettings,"Camera1.fx",found);
             float fy = readParameter<float>(fSettings,"Camera1.fy",found);
             float cx = readParameter<float>(fSettings,"Camera1.cx",found);
@@ -240,10 +247,10 @@ namespace ORB_SLAM3 {
 
             //Rectified images are assumed to be ideal PinHole images (no distortion)
         }
-        else if(cameraModel == "KannalaBrandt8"){
+        else if(cameraModel == "KannalaBrandt8"){ // 鱼眼相机
             cameraType_ = KannalaBrandt;
 
-            //Read intrinsic parameters
+            // 读取内参和畸变系数 Read intrinsic parameters
             float fx = readParameter<float>(fSettings,"Camera1.fx",found);
             float fy = readParameter<float>(fSettings,"Camera1.fy",found);
             float cx = readParameter<float>(fSettings,"Camera1.cx",found);
@@ -259,6 +266,7 @@ namespace ORB_SLAM3 {
             calibration1_ = new KannalaBrandt8(vCalibration);
             originalCalib1_ = new KannalaBrandt8(vCalibration);
 
+            // 读取重叠区域（双目）
             if(sensor_ == System::STEREO || sensor_ == System::IMU_STEREO){
                 int colBegin = readParameter<int>(fSettings,"Camera1.overlappingBegin",found);
                 int colEnd = readParameter<int>(fSettings,"Camera1.overlappingEnd",found);
@@ -267,24 +275,24 @@ namespace ORB_SLAM3 {
                 static_cast<KannalaBrandt8*>(calibration1_)->mvLappingArea = vOverlapping;
             }
         }
-        else{
+        else{ // 相机类型未知
             cerr << "Error: " << cameraModel << " not known" << endl;
             exit(-1);
         }
     }
 
+    // readCamera2 函数定义，读取相机 2 参数
     void Settings::readCamera2(cv::FileStorage &fSettings) {
         bool found;
         vector<float> vCalibration;
-        if (cameraType_ == PinHole) {
-            bNeedToRectify_ = true;
+        if (cameraType_ == PinHole) { // 针孔相机
+            bNeedToRectify_ = true; // 启用校正
 
-            //Read intrinsic parameters
+            // 读取相机 2 内参 Read intrinsic parameters
             float fx = readParameter<float>(fSettings,"Camera2.fx",found);
             float fy = readParameter<float>(fSettings,"Camera2.fy",found);
             float cx = readParameter<float>(fSettings,"Camera2.cx",found);
             float cy = readParameter<float>(fSettings,"Camera2.cy",found);
-
 
             vCalibration = {fx, fy, cx, cy};
 
@@ -292,15 +300,15 @@ namespace ORB_SLAM3 {
             originalCalib2_ = new Pinhole(vCalibration);
 
             //Check if it is a distorted PinHole
-            readParameter<float>(fSettings,"Camera2.k1",found,false);
+            readParameter<float>(fSettings,"Camera2.k1",found,false); // 检查是否有畸变参数 k1（非必须）
             if(found){
-                readParameter<float>(fSettings,"Camera2.k3",found,false);
+                readParameter<float>(fSettings,"Camera2.k3",found,false); // 检查是否有畸变参数 k3（非必须）
                 if(found){
-                    vPinHoleDistorsion2_.resize(5);
+                    vPinHoleDistorsion2_.resize(5); // k1、k2、p1、p2、k3
                     vPinHoleDistorsion2_[4] = readParameter<float>(fSettings,"Camera2.k3",found);
                 }
                 else{
-                    vPinHoleDistorsion2_.resize(4);
+                    vPinHoleDistorsion2_.resize(4); // k1、k2、p1、p2
                 }
                 vPinHoleDistorsion2_[0] = readParameter<float>(fSettings,"Camera2.k1",found);
                 vPinHoleDistorsion2_[1] = readParameter<float>(fSettings,"Camera2.k2",found);
@@ -308,24 +316,24 @@ namespace ORB_SLAM3 {
                 vPinHoleDistorsion2_[3] = readParameter<float>(fSettings,"Camera2.p2",found);
             }
         }
-        else if(cameraType_ == KannalaBrandt){
-            //Read intrinsic parameters
+        else if(cameraType_ == KannalaBrandt){ // 鱼眼相机
+            // 读取相机内参和畸变系数 Read intrinsic parameters
             float fx = readParameter<float>(fSettings,"Camera2.fx",found);
             float fy = readParameter<float>(fSettings,"Camera2.fy",found);
             float cx = readParameter<float>(fSettings,"Camera2.cx",found);
             float cy = readParameter<float>(fSettings,"Camera2.cy",found);
 
-            float k0 = readParameter<float>(fSettings,"Camera1.k1",found);
-            float k1 = readParameter<float>(fSettings,"Camera1.k2",found);
-            float k2 = readParameter<float>(fSettings,"Camera1.k3",found);
-            float k3 = readParameter<float>(fSettings,"Camera1.k4",found);
-
+            float k0 = readParameter<float>(fSettings,"Camera2.k1",found);
+            float k1 = readParameter<float>(fSettings,"Camera2.k2",found);
+            float k2 = readParameter<float>(fSettings,"Camera2.k3",found);
+            float k3 = readParameter<float>(fSettings,"Camera2.k4",found);
 
             vCalibration = {fx,fy,cx,cy,k0,k1,k2,k3};
 
             calibration2_ = new KannalaBrandt8(vCalibration);
             originalCalib2_ = new KannalaBrandt8(vCalibration);
 
+            // 读取重叠区域
             int colBegin = readParameter<int>(fSettings,"Camera2.overlappingBegin",found);
             int colEnd = readParameter<int>(fSettings,"Camera2.overlappingEnd",found);
             vector<int> vOverlapping = {colBegin, colEnd};
@@ -333,29 +341,30 @@ namespace ORB_SLAM3 {
             static_cast<KannalaBrandt8*>(calibration2_)->mvLappingArea = vOverlapping;
         }
 
-        //Load stereo extrinsic calibration
-        if(cameraType_ == Rectified){
-            b_ = readParameter<float>(fSettings,"Stereo.b",found);
-            bf_ = b_ * calibration1_->getParameter(0);
+        // Load stereo extrinsic calibration
+        if(cameraType_ == Rectified){ // 图像已校正
+            b_ = readParameter<float>(fSettings,"Stereo.b",found); // 读取基线
+            bf_ = b_ * calibration1_->getParameter(0);             // 基线*焦距
         }
         else{
-            cv::Mat cvTlr = readParameter<cv::Mat>(fSettings,"Stereo.T_c1_c2",found);
+            cv::Mat cvTlr = readParameter<cv::Mat>(fSettings,"Stereo.T_c1_c2",found); // 读取双目外参
             Tlr_ = Converter::toSophus(cvTlr);
 
             //TODO: also search for Trl and invert if necessary
 
-            b_ = Tlr_.translation().norm();
-            bf_ = b_ * calibration1_->getParameter(0);
+            b_ = Tlr_.translation().norm();             // 基线
+            bf_ = b_ * calibration1_->getParameter(0);  // 基线*焦距
         }
 
-        thDepth_ = readParameter<float>(fSettings,"Stereo.ThDepth",found);
+        thDepth_ = readParameter<float>(fSettings,"Stereo.ThDepth",found); // 读取深度阈值
 
 
     }
 
-    void Settings::readImageInfo(cv::FileStorage &fSettings) {
+    // readImageInfo 函数定义，读取图像信息
+    void Settings::readImageInfo(cv::FileStorage &fSettings) { 
         bool found;
-        //Read original and desired image dimensions
+        // 读取原始尺寸 Read original and desired image dimensions
         int originalRows = readParameter<int>(fSettings,"Camera.height",found);
         int originalCols = readParameter<int>(fSettings,"Camera.width",found);
         originalImSize_.width = originalCols;
@@ -363,17 +372,17 @@ namespace ORB_SLAM3 {
 
         newImSize_ = originalImSize_;
         int newHeigh = readParameter<int>(fSettings,"Camera.newHeight",found,false);
-        if(found){
-            bNeedToResize1_ = true;
-            newImSize_.height = newHeigh;
+        if(found){ // 配置参数中是否指定了 newHeight（非必须）
+            bNeedToResize1_ = true; // 启动 resize
+            newImSize_.height = newHeigh; // 保存新高度
 
-            if(!bNeedToRectify_){
-                //Update calibration
+            if(!bNeedToRectify_){ // 不需要校正时
+                // 按比例更新内参 Update calibration
                 float scaleRowFactor = (float)newImSize_.height / (float)originalImSize_.height;
                 calibration1_->setParameter(calibration1_->getParameter(1) * scaleRowFactor, 1);
                 calibration1_->setParameter(calibration1_->getParameter(3) * scaleRowFactor, 3);
 
-
+                // 更新相机 2 内参（双目且非图像已校正）
                 if((sensor_ == System::STEREO || sensor_ == System::IMU_STEREO) && cameraType_ != Rectified){
                     calibration2_->setParameter(calibration2_->getParameter(1) * scaleRowFactor, 1);
                     calibration2_->setParameter(calibration2_->getParameter(3) * scaleRowFactor, 3);
@@ -382,21 +391,22 @@ namespace ORB_SLAM3 {
         }
 
         int newWidth = readParameter<int>(fSettings,"Camera.newWidth",found,false);
-        if(found){
-            bNeedToResize1_ = true;
-            newImSize_.width = newWidth;
+        if(found){ // 配置参数中是否指定了 newWidth（非必须）
+            bNeedToResize1_ = true; // 启动 resize
+            newImSize_.width = newWidth; // 保存新宽度
 
-            if(!bNeedToRectify_){
-                //Update calibration
+            if(!bNeedToRectify_){ // 不需要校正时
+                // 按比例更新内参 Update calibration
                 float scaleColFactor = (float)newImSize_.width /(float) originalImSize_.width;
                 calibration1_->setParameter(calibration1_->getParameter(0) * scaleColFactor, 0);
                 calibration1_->setParameter(calibration1_->getParameter(2) * scaleColFactor, 2);
 
+                // 更新相机 2 内参（双目且非图像已校正）
                 if((sensor_ == System::STEREO || sensor_ == System::IMU_STEREO) && cameraType_ != Rectified){
                     calibration2_->setParameter(calibration2_->getParameter(0) * scaleColFactor, 0);
                     calibration2_->setParameter(calibration2_->getParameter(2) * scaleColFactor, 2);
 
-                    if(cameraType_ == KannalaBrandt){
+                    if(cameraType_ == KannalaBrandt){ // 更新重叠区域（双目鱼眼）
                         static_cast<KannalaBrandt8*>(calibration1_)->mvLappingArea[0] *= scaleColFactor;
                         static_cast<KannalaBrandt8*>(calibration1_)->mvLappingArea[1] *= scaleColFactor;
 
@@ -407,23 +417,25 @@ namespace ORB_SLAM3 {
             }
         }
 
-        fps_ = readParameter<int>(fSettings,"Camera.fps",found);
-        bRGB_ = (bool) readParameter<int>(fSettings,"Camera.RGB",found);
+        fps_ = readParameter<int>(fSettings,"Camera.fps",found);         // 读取帧率
+        bRGB_ = (bool) readParameter<int>(fSettings,"Camera.RGB",found); // 读取 RGB 颜色顺序
     }
 
+    // readIMU 函数定义，读取 IMU 参数
     void Settings::readIMU(cv::FileStorage &fSettings) {
         bool found;
+        // 读取噪声参数和采样率
         noiseGyro_ = readParameter<float>(fSettings,"IMU.NoiseGyro",found);
         noiseAcc_ = readParameter<float>(fSettings,"IMU.NoiseAcc",found);
         gyroWalk_ = readParameter<float>(fSettings,"IMU.GyroWalk",found);
         accWalk_ = readParameter<float>(fSettings,"IMU.AccWalk",found);
         imuFrequency_ = readParameter<float>(fSettings,"IMU.Frequency",found);
 
-        cv::Mat cvTbc = readParameter<cv::Mat>(fSettings,"IMU.T_b_c1",found);
+        cv::Mat cvTbc = readParameter<cv::Mat>(fSettings,"IMU.T_b_c1",found); // 读取相机相对于 IMU 的位姿
         Tbc_ = Converter::toSophus(cvTbc);
 
         readParameter<int>(fSettings,"IMU.InsertKFsWhenLost",found,false);
-        if(found){
+        if(found){ // 丢失时是否插入关键帧（非必须，默认为 true）
             insertKFsWhenLost_ = (bool) readParameter<int>(fSettings,"IMU.InsertKFsWhenLost",found,false);
         }
         else{
@@ -431,6 +443,7 @@ namespace ORB_SLAM3 {
         }
     }
 
+    // readRGBD 函数定义
     void Settings::readRGBD(cv::FileStorage& fSettings) {
         bool found;
 
@@ -440,16 +453,18 @@ namespace ORB_SLAM3 {
         bf_ = b_ * calibration1_->getParameter(0);
     }
 
+    // readORB 函数定义，读取 ORB 特征提取设置
     void Settings::readORB(cv::FileStorage &fSettings) {
         bool found;
 
-        nFeatures_ = readParameter<int>(fSettings,"ORBextractor.nFeatures",found);
-        scaleFactor_ = readParameter<float>(fSettings,"ORBextractor.scaleFactor",found);
-        nLevels_ = readParameter<int>(fSettings,"ORBextractor.nLevels",found);
-        initThFAST_ = readParameter<int>(fSettings,"ORBextractor.iniThFAST",found);
-        minThFAST_ = readParameter<int>(fSettings,"ORBextractor.minThFAST",found);
+        nFeatures_ = readParameter<int>(fSettings,"ORBextractor.nFeatures",found);       // 特征点数
+        scaleFactor_ = readParameter<float>(fSettings,"ORBextractor.scaleFactor",found); // 缩放系数
+        nLevels_ = readParameter<int>(fSettings,"ORBextractor.nLevels",found);           // 金字塔参数
+        initThFAST_ = readParameter<int>(fSettings,"ORBextractor.iniThFAST",found);      // FAST 初始值
+        minThFAST_ = readParameter<int>(fSettings,"ORBextractor.minThFAST",found);       // FAST 最小值
     }
 
+    // readViewer 函数定义，读取可视化设置参数
     void Settings::readViewer(cv::FileStorage &fSettings) {
         bool found;
 
@@ -463,12 +478,13 @@ namespace ORB_SLAM3 {
         viewPointY_ = readParameter<float>(fSettings,"Viewer.ViewpointY",found);
         viewPointZ_ = readParameter<float>(fSettings,"Viewer.ViewpointZ",found);
         viewPointF_ = readParameter<float>(fSettings,"Viewer.ViewpointF",found);
-        imageViewerScale_ = readParameter<float>(fSettings,"Viewer.imageViewScale",found,false);
+        imageViewerScale_ = readParameter<float>(fSettings,"Viewer.imageViewScale",found,false); // 可视化图像缩放（非必须）
 
          if(!found)
             imageViewerScale_ = 1.0f;
     }
 
+    // readLoadAndSave 函数定义，读取 Atlas 地图集加载和保存地址（非必须）
     void Settings::readLoadAndSave(cv::FileStorage &fSettings) {
         bool found;
 
@@ -476,19 +492,23 @@ namespace ORB_SLAM3 {
         sSaveto_ = readParameter<string>(fSettings,"System.SaveAtlasToFile",found,false);
     }
 
+    // readOtherParameters 函数定义，读取其它参数（非必须）
     void Settings::readOtherParameters(cv::FileStorage& fSettings) {
         bool found;
 
         thFarPoints_ = readParameter<float>(fSettings,"System.thFarPoints",found,false);
     }
 
+    // precomputeRectificationMaps 函数定义，双目校正
     void Settings::precomputeRectificationMaps() {
         //Precompute rectification maps, new calibrations, ...
+        // 获取相机 1、2 的内参
         cv::Mat K1 = static_cast<Pinhole*>(calibration1_)->toK();
         K1.convertTo(K1,CV_64F);
         cv::Mat K2 = static_cast<Pinhole*>(calibration2_)->toK();
         K2.convertTo(K2,CV_64F);
 
+        // 双目外参分离旋转和平移
         cv::Mat cvTlr;
         cv::eigen2cv(Tlr_.inverse().matrix3x4(),cvTlr);
         cv::Mat R12 = cvTlr.rowRange(0,3).colRange(0,3);
@@ -498,26 +518,27 @@ namespace ORB_SLAM3 {
 
         cv::Mat R_r1_u1, R_r2_u2;
         cv::Mat P1, P2, Q;
-
+        // 计算校正变换
         cv::stereoRectify(K1,camera1DistortionCoef(),K2,camera2DistortionCoef(),newImSize_,
                           R12, t12,
                           R_r1_u1,R_r2_u2,P1,P2,Q,
                           cv::CALIB_ZERO_DISPARITY,-1,newImSize_);
+        // 应用校正
         cv::initUndistortRectifyMap(K1, camera1DistortionCoef(), R_r1_u1, P1.rowRange(0, 3).colRange(0, 3),
                                     newImSize_, CV_32F, M1l_, M2l_);
         cv::initUndistortRectifyMap(K2, camera2DistortionCoef(), R_r2_u2, P2.rowRange(0, 3).colRange(0, 3),
                                     newImSize_, CV_32F, M1r_, M2r_);
 
-        //Update calibration
+        // 更新内参 Update calibration
         calibration1_->setParameter(P1.at<double>(0,0), 0);
         calibration1_->setParameter(P1.at<double>(1,1), 1);
         calibration1_->setParameter(P1.at<double>(0,2), 2);
         calibration1_->setParameter(P1.at<double>(1,2), 3);
 
-        //Update bf
+        // 更新 b*f Update bf
         bf_ = b_ * P1.at<double>(0,0);
 
-        //Update relative pose between camera 1 and IMU if necessary
+        // 更新相机相对于 IMU 的位姿 Update relative pose between camera 1 and IMU if necessary
         if(sensor_ == System::IMU_STEREO){
             Eigen::Matrix3f eigenR_r1_u1;
             cv::cv2eigen(R_r1_u1,eigenR_r1_u1);
@@ -526,6 +547,7 @@ namespace ORB_SLAM3 {
         }
     }
 
+    // 输出参数设置
     ostream &operator<<(std::ostream& output, const Settings& settings){
         output << "SLAM settings: " << endl;
 
