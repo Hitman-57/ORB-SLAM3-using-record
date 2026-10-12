@@ -40,6 +40,7 @@ namespace ORB_SLAM3
 Verbose::eLevel Verbose::th = Verbose::VERBOSITY_NORMAL;  // 初始化静态成员变量 th
 
 // system 类
+
 // SLAM 系统初始化（词袋文件路径，参数文件路径，传感器类型，是否使用可视化，初始帧数，序列名称），启动局部建图、回环检测和可视化线程
 System::System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor,
                const bool bUseViewer, const int initFr, const string &strSequence):
@@ -247,7 +248,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 
 }
 
-// 双目跟踪函数定义
+// 双目跟踪函数定义（左图，右图，时间戳，IMU 数据（默认为空），文件名（默认为空））
 Sophus::SE3f System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp, const vector<IMU::Point>& vImuMeas, string filename)
 {
     if(mSensor!=STEREO && mSensor!=IMU_STEREO) // 检查传感器类型
@@ -258,7 +259,7 @@ Sophus::SE3f System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, 
 
     // 图像预处理
     cv::Mat imLeftToFeed, imRightToFeed;
-    if(settings_ && settings_->needToRectify()){
+    if(settings_ && settings_->needToRectify()){ // 校正
         cv::Mat M1l = settings_->M1l();
         cv::Mat M2l = settings_->M2l();
         cv::Mat M1r = settings_->M1r();
@@ -267,7 +268,7 @@ Sophus::SE3f System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, 
         cv::remap(imLeft, imLeftToFeed, M1l, M2l, cv::INTER_LINEAR);
         cv::remap(imRight, imRightToFeed, M1r, M2r, cv::INTER_LINEAR);
     }
-    else if(settings_ && settings_->needToResize()){
+    else if(settings_ && settings_->needToResize()){ // 缩放
         cv::resize(imLeft,imLeftToFeed,settings_->newImSize());
         cv::resize(imRight,imRightToFeed,settings_->newImSize());
     }
@@ -278,8 +279,8 @@ Sophus::SE3f System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, 
 
     // 检查模式切换 Check mode change
     {
-        unique_lock<mutex> lock(mMutexMode);
-        if(mbActivateLocalizationMode)
+        unique_lock<mutex> lock(mMutexMode); // 保护锁，离开 {} 后解除
+        if(mbActivateLocalizationMode) // 纯跟踪，停止建图线程
         {
             mpLocalMapper->RequestStop();
 
@@ -292,7 +293,7 @@ Sophus::SE3f System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, 
             mpTracker->InformOnlyTracking(true);
             mbActivateLocalizationMode = false;
         }
-        if(mbDeactivateLocalizationMode)
+        if(mbDeactivateLocalizationMode) // 恢复完整 SLAM
         {
             mpTracker->InformOnlyTracking(false);
             mpLocalMapper->Release();
@@ -302,14 +303,14 @@ Sophus::SE3f System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, 
 
     // 检查重置 Check reset
     {
-        unique_lock<mutex> lock(mMutexReset);
-        if(mbReset)
+        unique_lock<mutex> lock(mMutexReset); // 保护锁，离开 {} 后解除
+        if(mbReset) // 重置整个系统
         {
             mpTracker->Reset();
             mbReset = false;
             mbResetActiveMap = false;
         }
-        else if(mbResetActiveMap)
+        else if(mbResetActiveMap) // 重置当前活跃的地图
         {
             mpTracker->ResetActiveMap();
             mbResetActiveMap = false;
@@ -409,13 +410,13 @@ Sophus::SE3f System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const
     return Tcw; // 返回当前帧相机位姿
 }
 
-// 单目跟踪函数定义
+// 单目跟踪函数定义（图像，时间戳，IMU 数据（默认为空），文件名（默认为空））
 Sophus::SE3f System::TrackMonocular(const cv::Mat &im, const double &timestamp, const vector<IMU::Point>& vImuMeas, string filename)
 {
 
     {
         unique_lock<mutex> lock(mMutexReset);
-        if(mbShutDown)
+        if(mbShutDown) // 检查关闭
             return Sophus::SE3f();
     }
 
@@ -427,7 +428,7 @@ Sophus::SE3f System::TrackMonocular(const cv::Mat &im, const double &timestamp, 
 
     // 图像预处理
     cv::Mat imToFeed = im.clone();
-    if(settings_ && settings_->needToResize()){
+    if(settings_ && settings_->needToResize()){ // 图像缩放
         cv::Mat resizedIm;
         cv::resize(im,resizedIm,settings_->newImSize());
         imToFeed = resizedIm;
@@ -435,8 +436,8 @@ Sophus::SE3f System::TrackMonocular(const cv::Mat &im, const double &timestamp, 
 
     // 检查模式切换 Check mode change
     {
-        unique_lock<mutex> lock(mMutexMode);
-        if(mbActivateLocalizationMode)
+        unique_lock<mutex> lock(mMutexMode); // 保护锁，离开 {} 后解除
+        if(mbActivateLocalizationMode) // 纯跟踪，停止建图线程
         {
             mpLocalMapper->RequestStop();
 
@@ -449,7 +450,7 @@ Sophus::SE3f System::TrackMonocular(const cv::Mat &im, const double &timestamp, 
             mpTracker->InformOnlyTracking(true);
             mbActivateLocalizationMode = false;
         }
-        if(mbDeactivateLocalizationMode)
+        if(mbDeactivateLocalizationMode) // 恢复完整 SLAM
         {
             mpTracker->InformOnlyTracking(false);
             mpLocalMapper->Release();
@@ -459,14 +460,14 @@ Sophus::SE3f System::TrackMonocular(const cv::Mat &im, const double &timestamp, 
 
     // 检查重置 Check reset
     {
-        unique_lock<mutex> lock(mMutexReset);
-        if(mbReset)
+        unique_lock<mutex> lock(mMutexReset); // 保护锁，离开 {} 后解除
+        if(mbReset) // 重置整个系统
         {
             mpTracker->Reset();
             mbReset = false;
             mbResetActiveMap = false;
         }
-        else if(mbResetActiveMap)
+        else if(mbResetActiveMap) // 重置当前活跃的地图
         {
             cout << "SYSTEM-> Reseting active map in monocular case" << endl;
             mpTracker->ResetActiveMap();
@@ -761,7 +762,7 @@ void System::SaveTrajectoryEuRoC(const string &filename)
         {
             //cout << " 2.bad" << endl;
             Trw = Trw * pKF->mTcp; // 此时的 Trw （或 Tcp ），为过去某一参考帧的位姿相对于当前参考帧
-            pKF = pKF->GetParent();
+            pKF = pKF->GetParent(); // 
             //cout << "--Parent KF: " << pKF->mnId << endl;
         }
 
