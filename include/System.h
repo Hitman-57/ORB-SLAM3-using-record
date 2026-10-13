@@ -103,7 +103,7 @@ public:
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW // Eigen 类型内存对齐宏
     // Initialize the SLAM system. It launches the Local Mapping, Loop Closing and Viewer threads.
-    // SLAM 系统初始化（词袋文件路径，参数文件路径，传感器类型，是否使用可视化，初始帧数，序列名称），启动局部建图、回环检测和可视化线程
+    // System 构造函数（词袋文件路径，参数文件路径，传感器类型，是否使用可视化，初始帧数，序列名称），启动局部建图、回环检测和可视化线程
     System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor, const bool bUseViewer = true, const int initFr = 0, const string &strSequence = std::string());
 
     // Proccess the given stereo frame. Images must be synchronized and rectified.
