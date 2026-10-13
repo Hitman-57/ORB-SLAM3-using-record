@@ -41,7 +41,7 @@ Verbose::eLevel Verbose::th = Verbose::VERBOSITY_NORMAL;  // 初始化静态成�
 
 // system 类
 
-// SLAM 系统初始化（词袋文件路径，参数文件路径，传感器类型，是否使用可视化，初始帧数，序列名称），启动局部建图、回环检测和可视化线程
+// System 构造函数（词袋文件路径，参数文件路径，传感器类型，是否使用可视化，初始帧数，序列名称），启动局部建图、回环检测和可视化线程
 System::System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor,
                const bool bUseViewer, const int initFr, const string &strSequence):
     // 初始化 private 中的部分变量（mSensor 传感器类型 sensor，mpViewer 可视化器指针置空，bool 类型的标志设为 false）
