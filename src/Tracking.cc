@@ -19,20 +19,20 @@
 
 #include "Tracking.h"
 
-#include "ORBmatcher.h"
-#include "FrameDrawer.h"
-#include "Converter.h"
-#include "G2oTypes.h"
-#include "Optimizer.h"
-#include "Pinhole.h"
-#include "KannalaBrandt8.h"
-#include "MLPnPsolver.h"
-#include "GeometricTools.h"
+#include "ORBmatcher.h"     // ORB 特征匹配
+#include "FrameDrawer.h"    // 帧绘制器
+#include "Converter.h"      // 转换库
+#include "G2oTypes.h"       // g2o 优化类型
+#include "Optimizer.h"      // 位姿优化器
+#include "Pinhole.h"        // 针孔相机模型
+#include "KannalaBrandt8.h" // 鱼眼相机模型
+#include "MLPnPsolver.h"    // MLPnP
+#include "GeometricTools.h" // 几何工具
 
-#include <iostream>
+#include <iostream> // C++ 标准输入输出
 
-#include <mutex>
-#include <chrono>
+#include <mutex>  // 互斥锁
+#include <chrono> // 计时
 
 
 using namespace std;
@@ -40,8 +40,9 @@ using namespace std;
 namespace ORB_SLAM3
 {
 
-
-Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Atlas *pAtlas, KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, Settings* settings, const string &_nameSeq):
+// 构造函数定义（系统，词袋，帧绘制器，地图绘制器，Atlas 地图集，帧数据库，参数文件路径，传感器类型，配置参数，序列名（默认为空））
+Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Atlas *pAtlas, 
+    KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, Settings* settings, const string &_nameSeq):
     mState(NO_IMAGES_YET), mSensor(sensor), mTrackedFr(0), mbStep(false),
     mbOnlyTracking(false), mbMapUpdated(false), mbVO(false), mpORBVocabulary(pVoc), mpKeyFrameDB(pKFDB),
     mbReadyToInitializate(false), mpSystem(pSys), mpViewer(NULL), bStepByStep(false),
@@ -49,10 +50,10 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
     mnInitialFrameId(0), mbCreatedMap(false), mnFirstFrameId(0), mpCamera2(nullptr), mpLastKeyFrame(static_cast<KeyFrame*>(NULL))
 {
     // Load camera parameters from settings file
-    if(settings){
+    if(settings){ // 实际就是 strSettingPath 的配置文件解析出来的参数
         newParameterLoader(settings);
     }
-    else{
+    else{ // 从 strSettingPath 的配置文件中解析（通常都会传入解析好的参数，该部分意义不明）
         cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
 
         bool b_parse_cam = ParseCamParamFile(fSettings);
@@ -94,10 +95,11 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
         }
     }
 
-    initID = 0; lastID = 0;
-    mbInitWith3KFs = false;
-    mnNumDataset = 0;
+    initID = 0; lastID = 0; // 初始/最后帧 ID，置 0
+    mbInitWith3KFs = false; // 是否用三个关键帧初始化，置 false
+    mnNumDataset = 0;       // 数据集编号，置 0
 
+    // 打印相机数量、ID 和类型
     vector<GeometricCamera*> vpCams = mpAtlas->GetAllCameras();
     std::cout << "There are " << vpCams.size() << " cameras in the atlas" << std::endl;
     for(GeometricCamera* pCam : vpCams)
@@ -117,7 +119,7 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
         }
     }
 
-#ifdef REGISTER_TIMES
+#ifdef REGISTER_TIMES // 时间统计清空（REGISTER_TIMES 宏定义打开时，位于 include/Setting.h 中）
     vdRectStereo_ms.clear();
     vdResizeImage_ms.clear();
     vdORBExtract_ms.clear();
@@ -130,7 +132,7 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
 #endif
 }
 
-#ifdef REGISTER_TIMES
+#ifdef REGISTER_TIMES // 时间统计（REGISTER_TIMES 宏定义打开时，位于 include/Setting.h 中）
 double calcAverage(vector<double> v_times)
 {
     double accum = 0;
@@ -526,17 +528,21 @@ void Tracking::PrintTimeStats()
 
 #endif
 
+// 析构函数
 Tracking::~Tracking()
 {
     //f_track_stats.close();
 
 }
 
-void Tracking::newParameterLoader(Settings *settings) {
-    mpCamera = settings->camera1();
-    mpCamera = mpAtlas->AddCamera(mpCamera);
 
-    if(settings->needToUndistort()){
+
+// 配置参数加载
+void Tracking::newParameterLoader(Settings *settings) {
+    mpCamera = settings->camera1();          // 获取相机 1 内参
+    mpCamera = mpAtlas->AddCamera(mpCamera); // 在 Atlas 中注册相机 1
+
+    if(settings->needToUndistort()){ // 是否去畸变（单目）
         mDistCoef = settings->camera1DistortionCoef();
     }
     else{
@@ -546,76 +552,79 @@ void Tracking::newParameterLoader(Settings *settings) {
     //TODO: missing image scaling and rectification
     mImageScale = 1.0f;
 
-    mK = cv::Mat::eye(3,3,CV_32F);
+    mK = cv::Mat::eye(3,3,CV_32F); // opencv 格式相机内参
     mK.at<float>(0,0) = mpCamera->getParameter(0);
     mK.at<float>(1,1) = mpCamera->getParameter(1);
     mK.at<float>(0,2) = mpCamera->getParameter(2);
     mK.at<float>(1,2) = mpCamera->getParameter(3);
 
-    mK_.setIdentity();
+    mK_.setIdentity(); // eigen 格式相机内参
     mK_(0,0) = mpCamera->getParameter(0);
     mK_(1,1) = mpCamera->getParameter(1);
     mK_(0,2) = mpCamera->getParameter(2);
     mK_(1,2) = mpCamera->getParameter(3);
 
     if((mSensor==System::STEREO || mSensor==System::IMU_STEREO || mSensor==System::IMU_RGBD) &&
-        settings->cameraType() == Settings::KannalaBrandt){
-        mpCamera2 = settings->camera2();
-        mpCamera2 = mpAtlas->AddCamera(mpCamera2);
+        settings->cameraType() == Settings::KannalaBrandt){ // 双目/ RGB-D 且为鱼眼相机
+        mpCamera2 = settings->camera2();           // 获取相机 2 内参
+        mpCamera2 = mpAtlas->AddCamera(mpCamera2); // 在 Atlas 中注册相机 2
 
-        mTlr = settings->Tlr();
+        mTlr = settings->Tlr(); // 相机外参
 
-        mpFrameDrawer->both = true;
+        mpFrameDrawer->both = true; // 同时绘制左右两图像
     }
 
     if(mSensor==System::STEREO || mSensor==System::RGBD || mSensor==System::IMU_STEREO || mSensor==System::IMU_RGBD ){
-        mbf = settings->bf();
-        mThDepth = settings->b() * settings->thDepth();
+        mbf = settings->bf();                           // 获取基线*焦距
+        mThDepth = settings->b() * settings->thDepth(); // 深度阈值
     }
 
     if(mSensor==System::RGBD || mSensor==System::IMU_RGBD){
-        mDepthMapFactor = settings->depthMapFactor();
+        mDepthMapFactor = settings->depthMapFactor(); // 深度图因子
         if(fabs(mDepthMapFactor)<1e-5)
             mDepthMapFactor=1;
         else
             mDepthMapFactor = 1.0f/mDepthMapFactor;
     }
 
-    mMinFrames = 0;
-    mMaxFrames = settings->fps();
-    mbRGB = settings->rgb();
+    mMinFrames = 0;               // 最小关键帧间隔，取 0
+    mMaxFrames = settings->fps(); // 最大关键帧间隔，取帧率值
+    mbRGB = settings->rgb();      // RGB 颜色顺序
 
     //ORB parameters
-    int nFeatures = settings->nFeatures();
-    int nLevels = settings->nLevels();
-    int fIniThFAST = settings->initThFAST();
-    int fMinThFAST = settings->minThFAST();
-    float fScaleFactor = settings->scaleFactor();
+    int nFeatures = settings->nFeatures();        // 特征点数量
+    int nLevels = settings->nLevels();            // 金字塔层数
+    int fIniThFAST = settings->initThFAST();      // 初始 FAST
+    int fMinThFAST = settings->minThFAST();       // 最小 FAST
+    float fScaleFactor = settings->scaleFactor(); // 缩放系数
 
-    mpORBextractorLeft = new ORBextractor(nFeatures,fScaleFactor,nLevels,fIniThFAST,fMinThFAST);
+    mpORBextractorLeft = new ORBextractor(nFeatures,fScaleFactor,nLevels,fIniThFAST,fMinThFAST); // 左图像特征提取器
 
-    if(mSensor==System::STEREO || mSensor==System::IMU_STEREO)
+    if(mSensor==System::STEREO || mSensor==System::IMU_STEREO) // 右图像特征提取器（双目）
         mpORBextractorRight = new ORBextractor(nFeatures,fScaleFactor,nLevels,fIniThFAST,fMinThFAST);
 
-    if(mSensor==System::MONOCULAR || mSensor==System::IMU_MONOCULAR)
+    if(mSensor==System::MONOCULAR || mSensor==System::IMU_MONOCULAR) // 初始化专用特征提取器（单目）
         mpIniORBextractor = new ORBextractor(5*nFeatures,fScaleFactor,nLevels,fIniThFAST,fMinThFAST);
 
     //IMU parameters
-    Sophus::SE3f Tbc = settings->Tbc();
-    mInsertKFsLost = settings->insertKFsWhenLost();
-    mImuFreq = settings->imuFrequency();
-    mImuPer = 0.001; //1.0 / (double) mImuFreq;     //TODO: ESTO ESTA BIEN?
-    float Ng = settings->noiseGyro();
-    float Na = settings->noiseAcc();
-    float Ngw = settings->gyroWalk();
-    float Naw = settings->accWalk();
+    Sophus::SE3f Tbc = settings->Tbc();             // 相机相对于 IMU 的位姿
+    mInsertKFsLost = settings->insertKFsWhenLost(); // 丢失时是否插入关键帧
+    mImuFreq = settings->imuFrequency();            // IMU 采样率
+    mImuPer = 0.001;                                // IMU 周期      1.0 / (double) mImuFreq; TODO: ESTO ESTA BIEN?
+    float Ng = settings->noiseGyro();               // 陀螺仪噪声
+    float Na = settings->noiseAcc();                // 加速度计噪声
+    float Ngw = settings->gyroWalk();               // 陀螺仪随机游走
+    float Naw = settings->accWalk();                // 加速度计随机游走
 
-    const float sf = sqrt(mImuFreq);
-    mpImuCalib = new IMU::Calib(Tbc,Ng*sf,Na*sf,Ngw/sf,Naw/sf);
+    const float sf = sqrt(mImuFreq);                            // 采样率平方根
+    mpImuCalib = new IMU::Calib(Tbc,Ng*sf,Na*sf,Ngw/sf,Naw/sf); // IMU 标定参数对象
 
-    mpImuPreintegratedFromLastKF = new IMU::Preintegrated(IMU::Bias(),*mpImuCalib);
+    mpImuPreintegratedFromLastKF = new IMU::Preintegrated(IMU::Bias(),*mpImuCalib); // 创建 IMU 预积分对象
 }
 
+
+
+// 解析相机参数
 bool Tracking::ParseCamParamFile(cv::FileStorage &fSettings)
 {
     mDistCoef = cv::Mat::zeros(4,1,CV_32F);
@@ -1214,6 +1223,7 @@ bool Tracking::ParseCamParamFile(cv::FileStorage &fSettings)
     return true;
 }
 
+// 解析 ORB 特征提取参数
 bool Tracking::ParseORBParamFile(cv::FileStorage &fSettings)
 {
     bool b_miss_params = false;
@@ -1298,6 +1308,7 @@ bool Tracking::ParseORBParamFile(cv::FileStorage &fSettings)
     return true;
 }
 
+// 解析 IMU 参数
 bool Tracking::ParseIMUParamFile(cv::FileStorage &fSettings)
 {
     bool b_miss_params = false;
@@ -1424,26 +1435,33 @@ bool Tracking::ParseIMUParamFile(cv::FileStorage &fSettings)
     return true;
 }
 
+
+
+// 指向局部建图线程的指针
 void Tracking::SetLocalMapper(LocalMapping *pLocalMapper)
 {
     mpLocalMapper=pLocalMapper;
 }
 
+// 指向回环检测线程的指针
 void Tracking::SetLoopClosing(LoopClosing *pLoopClosing)
 {
     mpLoopClosing=pLoopClosing;
 }
 
+// 指向可视化线程的指针
 void Tracking::SetViewer(Viewer *pViewer)
 {
     mpViewer=pViewer;
 }
 
+// 单步调试模式设置
 void Tracking::SetStepByStep(bool bSet)
 {
     bStepByStep = bSet;
 }
 
+// 单步调试模式状态
 bool Tracking::GetStepByStep()
 {
     return bStepByStep;
@@ -1451,6 +1469,7 @@ bool Tracking::GetStepByStep()
 
 
 
+// 双目图像抓取和处理
 Sophus::SE3f Tracking::GrabImageStereo(const cv::Mat &imRectLeft, const cv::Mat &imRectRight, const double &timestamp, string filename)
 {
     //cout << "GrabImageStereo" << endl;
@@ -1459,7 +1478,7 @@ Sophus::SE3f Tracking::GrabImageStereo(const cv::Mat &imRectLeft, const cv::Mat 
     cv::Mat imGrayRight = imRectRight;
     mImRight = imRectRight;
 
-    if(mImGray.channels()==3)
+    if(mImGray.channels()==3) // RGB 或 BGR 转灰度
     {
         //cout << "Image with 3 channels" << endl;
         if(mbRGB)
@@ -1473,7 +1492,7 @@ Sophus::SE3f Tracking::GrabImageStereo(const cv::Mat &imRectLeft, const cv::Mat 
             cvtColor(imGrayRight,imGrayRight,cv::COLOR_BGR2GRAY);
         }
     }
-    else if(mImGray.channels()==4)
+    else if(mImGray.channels()==4) // RGBA 或 BGRA 转灰度
     {
         //cout << "Image with 4 channels" << endl;
         if(mbRGB)
@@ -1490,33 +1509,33 @@ Sophus::SE3f Tracking::GrabImageStereo(const cv::Mat &imRectLeft, const cv::Mat 
 
     //cout << "Incoming frame creation" << endl;
 
-    if (mSensor == System::STEREO && !mpCamera2)
+    if (mSensor == System::STEREO && !mpCamera2) // 双目且无 mpCamera2（非鱼眼双目，详见 Tracking::newParameterLoader ）
         mCurrentFrame = Frame(mImGray,imGrayRight,timestamp,mpORBextractorLeft,mpORBextractorRight,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth,mpCamera);
-    else if(mSensor == System::STEREO && mpCamera2)
+    else if(mSensor == System::STEREO && mpCamera2) // 双目且有 mpCamera2
         mCurrentFrame = Frame(mImGray,imGrayRight,timestamp,mpORBextractorLeft,mpORBextractorRight,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth,mpCamera,mpCamera2,mTlr);
-    else if(mSensor == System::IMU_STEREO && !mpCamera2)
+    else if(mSensor == System::IMU_STEREO && !mpCamera2) // 双目惯性且无 mpCamera2
         mCurrentFrame = Frame(mImGray,imGrayRight,timestamp,mpORBextractorLeft,mpORBextractorRight,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth,mpCamera,&mLastFrame,*mpImuCalib);
-    else if(mSensor == System::IMU_STEREO && mpCamera2)
+    else if(mSensor == System::IMU_STEREO && mpCamera2) // 双目惯性且有 mpCamera2
         mCurrentFrame = Frame(mImGray,imGrayRight,timestamp,mpORBextractorLeft,mpORBextractorRight,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth,mpCamera,mpCamera2,mTlr,&mLastFrame,*mpImuCalib);
 
     //cout << "Incoming frame ended" << endl;
 
-    mCurrentFrame.mNameFile = filename;
-    mCurrentFrame.mnDataset = mnNumDataset;
+    mCurrentFrame.mNameFile = filename;     // filename 可为空（System::Track* 里的调用传入默认为空）
+    mCurrentFrame.mnDataset = mnNumDataset; // 数据集编号
 
-#ifdef REGISTER_TIMES
-    vdORBExtract_ms.push_back(mCurrentFrame.mTimeORB_Ext);
-    vdStereoMatch_ms.push_back(mCurrentFrame.mTimeStereoMatch);
+#ifdef REGISTER_TIMES // 时间统计（REGISTER_TIMES 宏定义打开时，位于 include/Setting.h 中）
+    vdORBExtract_ms.push_back(mCurrentFrame.mTimeORB_Ext);      // 特征提取耗时
+    vdStereoMatch_ms.push_back(mCurrentFrame.mTimeStereoMatch); // 双目匹配耗时
 #endif
 
     //cout << "Tracking start" << endl;
-    Track();
+    Track(); // 跟踪线程主函数
     //cout << "Tracking end" << endl;
 
-    return mCurrentFrame.GetPose();
+    return mCurrentFrame.GetPose(); // 返回当前帧的相机位姿
 }
 
-
+// RGB-D 图像抓取和处理
 Sophus::SE3f Tracking::GrabImageRGBD(const cv::Mat &imRGB,const cv::Mat &imD, const double &timestamp, string filename)
 {
     mImGray = imRGB;
@@ -1562,18 +1581,18 @@ Sophus::SE3f Tracking::GrabImageRGBD(const cv::Mat &imRGB,const cv::Mat &imD, co
     return mCurrentFrame.GetPose();
 }
 
-
+// 单目图像抓取和处理
 Sophus::SE3f Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp, string filename)
 {
     mImGray = im;
-    if(mImGray.channels()==3)
+    if(mImGray.channels()==3) // RGB 或 BGR 转灰度
     {
         if(mbRGB)
             cvtColor(mImGray,mImGray,cv::COLOR_RGB2GRAY);
         else
             cvtColor(mImGray,mImGray,cv::COLOR_BGR2GRAY);
     }
-    else if(mImGray.channels()==4)
+    else if(mImGray.channels()==4) // RGBA 或 BGRA 转灰度
     {
         if(mbRGB)
             cvtColor(mImGray,mImGray,cv::COLOR_RGBA2GRAY);
@@ -1581,46 +1600,49 @@ Sophus::SE3f Tracking::GrabImageMonocular(const cv::Mat &im, const double &times
             cvtColor(mImGray,mImGray,cv::COLOR_BGRA2GRAY);
     }
 
-    if (mSensor == System::MONOCULAR)
+    if (mSensor == System::MONOCULAR) // 单目
     {
-        if(mState==NOT_INITIALIZED || mState==NO_IMAGES_YET ||(lastID - initID) < mMaxFrames)
+        if(mState==NOT_INITIALIZED || mState==NO_IMAGES_YET ||(lastID - initID) < mMaxFrames) // 未初始化
             mCurrentFrame = Frame(mImGray,timestamp,mpIniORBextractor,mpORBVocabulary,mpCamera,mDistCoef,mbf,mThDepth);
-        else
+        else // 已初始化
             mCurrentFrame = Frame(mImGray,timestamp,mpORBextractorLeft,mpORBVocabulary,mpCamera,mDistCoef,mbf,mThDepth);
     }
-    else if(mSensor == System::IMU_MONOCULAR)
+    else if(mSensor == System::IMU_MONOCULAR) // 单目惯性
     {
-        if(mState==NOT_INITIALIZED || mState==NO_IMAGES_YET)
+        if(mState==NOT_INITIALIZED || mState==NO_IMAGES_YET) // 未初始化
         {
             mCurrentFrame = Frame(mImGray,timestamp,mpIniORBextractor,mpORBVocabulary,mpCamera,mDistCoef,mbf,mThDepth,&mLastFrame,*mpImuCalib);
         }
-        else
+        else // 已初始化
             mCurrentFrame = Frame(mImGray,timestamp,mpORBextractorLeft,mpORBVocabulary,mpCamera,mDistCoef,mbf,mThDepth,&mLastFrame,*mpImuCalib);
     }
 
-    if (mState==NO_IMAGES_YET)
+    if (mState==NO_IMAGES_YET) // 记录第一帧图像的时间戳
         t0=timestamp;
 
-    mCurrentFrame.mNameFile = filename;
-    mCurrentFrame.mnDataset = mnNumDataset;
+    mCurrentFrame.mNameFile = filename;     // filename 可为空（System::Track* 里的调用传入默认为空）
+    mCurrentFrame.mnDataset = mnNumDataset; // 数据集编号
 
-#ifdef REGISTER_TIMES
-    vdORBExtract_ms.push_back(mCurrentFrame.mTimeORB_Ext);
+#ifdef REGISTER_TIMES // 时间统计（REGISTER_TIMES 宏定义打开时，位于 include/Setting.h 中）
+    vdORBExtract_ms.push_back(mCurrentFrame.mTimeORB_Ext); // 特征提取耗时
 #endif
 
-    lastID = mCurrentFrame.mnId;
-    Track();
+    lastID = mCurrentFrame.mnId; // 更新最后帧 ID
+    Track(); // 跟踪线程主函数
 
-    return mCurrentFrame.GetPose();
+    return mCurrentFrame.GetPose(); // 返回当前帧的相机位姿
 }
 
 
+
+// IMU 数据抓取
 void Tracking::GrabImuData(const IMU::Point &imuMeasurement)
 {
     unique_lock<mutex> lock(mMutexImuQueue);
     mlQueueImuData.push_back(imuMeasurement);
 }
 
+// 帧间 IMU 数据预积分
 void Tracking::PreintegrateIMU()
 {
 
@@ -1734,7 +1756,7 @@ void Tracking::PreintegrateIMU()
     //Verbose::PrintMess("Preintegration is finished!! ", Verbose::VERBOSITY_DEBUG);
 }
 
-
+// 用 IMU 预积分做预测
 bool Tracking::PredictStateIMU()
 {
     if(!mCurrentFrame.mpPrevFrame)
@@ -1785,12 +1807,15 @@ bool Tracking::PredictStateIMU()
     return false;
 }
 
+// 帧 IMU 重置（空实现）
 void Tracking::ResetFrameIMU()
 {
     // TODO To implement...
 }
 
 
+
+// 主跟踪函数
 void Tracking::Track()
 {
 
@@ -2332,6 +2357,7 @@ void Tracking::Track()
 }
 
 
+// 双目/ RGB-D 初始化
 void Tracking::StereoInitialization()
 {
     if(mCurrentFrame.N>500)
@@ -2444,7 +2470,7 @@ void Tracking::StereoInitialization()
     }
 }
 
-
+// 单目初始化
 void Tracking::MonocularInitialization()
 {
 
@@ -2521,8 +2547,7 @@ void Tracking::MonocularInitialization()
     }
 }
 
-
-
+// 创建初始地图（单目）
 void Tracking::CreateInitialMapMonocular()
 {
     // Create KeyFrames
@@ -2658,7 +2683,7 @@ void Tracking::CreateInitialMapMonocular()
     initID = pKFcur->mnId;
 }
 
-
+// 在 Atlas 中创建地图
 void Tracking::CreateMapInAtlas()
 {
     mnLastInitFrameId = mCurrentFrame.mnId;
@@ -2699,6 +2724,7 @@ void Tracking::CreateMapInAtlas()
     mbCreatedMap = true;
 }
 
+// 检查上一帧中是否有地图点被替换
 void Tracking::CheckReplacedInLastFrame()
 {
     for(int i =0; i<mLastFrame.N; i++)
@@ -2716,7 +2742,7 @@ void Tracking::CheckReplacedInLastFrame()
     }
 }
 
-
+// 基于参考关键帧进行跟踪
 bool Tracking::TrackReferenceKeyFrame()
 {
     // Compute Bag of Words vector
@@ -2778,6 +2804,7 @@ bool Tracking::TrackReferenceKeyFrame()
         return nmatchesMap>=10;
 }
 
+// 更新最后一帧
 void Tracking::UpdateLastFrame()
 {
     // Update pose according to reference keyframe
@@ -2851,6 +2878,7 @@ void Tracking::UpdateLastFrame()
     }
 }
 
+// 恒速运动模型跟踪
 bool Tracking::TrackWithMotionModel()
 {
     ORBmatcher matcher(0.9,true);
@@ -2946,6 +2974,7 @@ bool Tracking::TrackWithMotionModel()
         return nmatchesMap>=10;
 }
 
+// 局部地图跟踪
 bool Tracking::TrackLocalMap()
 {
 
@@ -3061,6 +3090,7 @@ bool Tracking::TrackLocalMap()
     }
 }
 
+// 关键帧决策
 bool Tracking::NeedNewKeyFrame()
 {
     if((mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD) && !mpAtlas->GetCurrentMap()->isImuInitialized())
@@ -3213,6 +3243,7 @@ bool Tracking::NeedNewKeyFrame()
         return false;
 }
 
+// 创建新的关键帧
 void Tracking::CreateNewKeyFrame()
 {
     if(mpLocalMapper->IsInitializing() && !mpAtlas->isImuInitialized())
@@ -3340,6 +3371,7 @@ void Tracking::CreateNewKeyFrame()
     mpLastKeyFrame = pKF;
 }
 
+// 在当前帧中搜索局部地图点
 void Tracking::SearchLocalPoints()
 {
     // Do not search map points already matched
@@ -3414,6 +3446,7 @@ void Tracking::SearchLocalPoints()
     }
 }
 
+// 更新局部地图
 void Tracking::UpdateLocalMap()
 {
     // This is for visualization
@@ -3424,6 +3457,7 @@ void Tracking::UpdateLocalMap()
     UpdateLocalPoints();
 }
 
+// 更新局部地图点
 void Tracking::UpdateLocalPoints()
 {
     mvpLocalMapPoints.clear();
@@ -3453,7 +3487,7 @@ void Tracking::UpdateLocalPoints()
     }
 }
 
-
+// 更新局部关键帧
 void Tracking::UpdateLocalKeyFrames()
 {
     // Each map point vote for the keyframes in which it has been observed
@@ -3606,6 +3640,7 @@ void Tracking::UpdateLocalKeyFrames()
     }
 }
 
+// 重定位
 bool Tracking::Relocalization()
 {
     Verbose::PrintMess("Starting relocalization", Verbose::VERBOSITY_NORMAL);
@@ -3776,6 +3811,7 @@ bool Tracking::Relocalization()
 
 }
 
+// 重置系统
 void Tracking::Reset(bool bLocMap)
 {
     Verbose::PrintMess("System Reseting", Verbose::VERBOSITY_NORMAL);
@@ -3837,6 +3873,7 @@ void Tracking::Reset(bool bLocMap)
     Verbose::PrintMess("   End reseting! ", Verbose::VERBOSITY_NORMAL);
 }
 
+// 重置当前活跃地图
 void Tracking::ResetActiveMap(bool bLocMap)
 {
     Verbose::PrintMess("Active map Reseting", Verbose::VERBOSITY_NORMAL);
@@ -3928,11 +3965,13 @@ void Tracking::ResetActiveMap(bool bLocMap)
     Verbose::PrintMess("   End reseting! ", Verbose::VERBOSITY_NORMAL);
 }
 
+// 返回当前局部地图点列表
 vector<MapPoint*> Tracking::GetLocalMapMPS()
 {
     return mvpLocalMapPoints;
 }
 
+// 更改相机标定？？？
 void Tracking::ChangeCalibration(const string &strSettingPath)
 {
     cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
@@ -3972,11 +4011,13 @@ void Tracking::ChangeCalibration(const string &strSettingPath)
     Frame::mbInitialComputations = true;
 }
 
+// 仅定位
 void Tracking::InformOnlyTracking(const bool &flag)
 {
     mbOnlyTracking = flag;
 }
 
+// 更新帧 IMU？？？
 void Tracking::UpdateFrameIMU(const float s, const IMU::Bias &b, KeyFrame* pCurrentKeyFrame)
 {
     Map * pMap = pCurrentKeyFrame->GetMap();
@@ -4050,27 +4091,32 @@ void Tracking::UpdateFrameIMU(const float s, const IMU::Bias &b, KeyFrame* pCurr
     mnFirstImuFrameId = mCurrentFrame.mnId;
 }
 
+// 新建数据集
 void Tracking::NewDataset()
 {
     mnNumDataset++;
 }
 
+// 返回当前数据集编号
 int Tracking::GetNumberDataset()
 {
     return mnNumDataset;
 }
 
+// 返回当前帧匹配点数量
 int Tracking::GetMatchesInliers()
 {
     return mnMatchesInliers;
 }
 
+// 保存子轨迹
 void Tracking::SaveSubTrajectory(string strNameFile_frames, string strNameFile_kf, string strFolder)
 {
     mpSystem->SaveTrajectoryEuRoC(strFolder + strNameFile_frames);
     //mpSystem->SaveKeyFrameTrajectoryEuRoC(strFolder + strNameFile_kf);
 }
 
+// 保存指定地图的子轨迹
 void Tracking::SaveSubTrajectory(string strNameFile_frames, string strNameFile_kf, Map* pMap)
 {
     mpSystem->SaveTrajectoryEuRoC(strNameFile_frames, pMap);
@@ -4078,6 +4124,7 @@ void Tracking::SaveSubTrajectory(string strNameFile_frames, string strNameFile_k
         mpSystem->SaveKeyFrameTrajectoryEuRoC(strNameFile_kf, pMap);
 }
 
+// 返回图像缩放系数
 float Tracking::GetImageScale()
 {
     return mImageScale;
