@@ -317,12 +317,12 @@ Sophus::SE3f System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, 
         }
     }
 
-    if (mSensor == System::IMU_STEREO) // 传递 IMU 数据
+    if (mSensor == System::IMU_STEREO) // 抓取 IMU 数据
         for(size_t i_imu = 0; i_imu < vImuMeas.size(); i_imu++)
             mpTracker->GrabImuData(vImuMeas[i_imu]);
 
     // std::cout << "start GrabImageStereo" << std::endl;
-    Sophus::SE3f Tcw = mpTracker->GrabImageStereo(imLeftToFeed,imRightToFeed,timestamp,filename); // 传递当前帧
+    Sophus::SE3f Tcw = mpTracker->GrabImageStereo(imLeftToFeed,imRightToFeed,timestamp,filename); // 抓取当前帧并进行跟踪
 
     // std::cout << "out grabber" << std::endl;
 
@@ -395,11 +395,11 @@ Sophus::SE3f System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const
         }
     }
 
-    if (mSensor == System::IMU_RGBD)  // 传递 IMU 数据
+    if (mSensor == System::IMU_RGBD)  // 抓取 IMU 数据
         for(size_t i_imu = 0; i_imu < vImuMeas.size(); i_imu++)
             mpTracker->GrabImuData(vImuMeas[i_imu]);
 
-    Sophus::SE3f Tcw = mpTracker->GrabImageRGBD(imToFeed,imDepthToFeed,timestamp,filename);  // 传递当前帧
+    Sophus::SE3f Tcw = mpTracker->GrabImageRGBD(imToFeed,imDepthToFeed,timestamp,filename);  // 抓取当前帧并进行跟踪
 
     // 更新状态
     unique_lock<mutex> lock2(mMutexState);
@@ -475,11 +475,11 @@ Sophus::SE3f System::TrackMonocular(const cv::Mat &im, const double &timestamp, 
         }
     }
 
-    if (mSensor == System::IMU_MONOCULAR) // 传递 IMU 数据
+    if (mSensor == System::IMU_MONOCULAR) // 抓取 IMU 数据
         for(size_t i_imu = 0; i_imu < vImuMeas.size(); i_imu++)
             mpTracker->GrabImuData(vImuMeas[i_imu]);
 
-    Sophus::SE3f Tcw = mpTracker->GrabImageMonocular(imToFeed,timestamp,filename); // 传递图像数据
+    Sophus::SE3f Tcw = mpTracker->GrabImageMonocular(imToFeed,timestamp,filename); // 抓取当前帧并进行跟踪
 
     // 更新状态
     unique_lock<mutex> lock2(mMutexState);
