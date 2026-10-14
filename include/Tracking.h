@@ -128,7 +128,7 @@ public:
         NO_IMAGES_YET=0,     // 无图像
         NOT_INITIALIZED=1,   // 未初始化
         OK=2,                // OK
-        RECENTLY_LOST=3,     // 丢失，尝试重定位
+        RECENTLY_LOST=3,     // 丢失（最近）
         LOST=4,              // 完全丢失
         OK_KLT=5             // OK 但使用光流跟踪
     };
@@ -200,7 +200,7 @@ public:
 protected:
 
     // Main tracking function. It is independent of the input sensor.
-    void Track(); // 主跟踪函数
+    void Track(); // 跟踪线程主函数
 
     // Map initialization for stereo and RGB-D
     void StereoInitialization(); // 双目或 RGB-D 地图初始化
@@ -211,10 +211,10 @@ protected:
     void CreateInitialMapMonocular(); // 创建单目初始地图
 
     void CheckReplacedInLastFrame(); // 检查上一帧中是否有地图点被替换
-    bool TrackReferenceKeyFrame();   // 基于参考关键帧进行跟踪
+    bool TrackReferenceKeyFrame();   // 基于参考关键帧做位姿估计
     void UpdateLastFrame();          // 更新上一帧信息
-    bool TrackWithMotionModel();     // 恒速运动模型跟踪
-    bool PredictStateIMU();          // 使用 IMU 预测当前位姿
+    bool TrackWithMotionModel();     // 恒速运动模型做位姿估计
+    bool PredictStateIMU();          // 使用 IMU 预积分做位姿估计
 
     bool Relocalization(); // 重定位
 
@@ -222,7 +222,7 @@ protected:
     void UpdateLocalPoints();    // 更新局部地图点
     void UpdateLocalKeyFrames(); // 更新局部关键帧
 
-    bool TrackLocalMap();     // 在当前帧中跟踪局部地图
+    bool TrackLocalMap();     // 局部地图跟踪
     void SearchLocalPoints(); // 在局部地图点中搜索当前帧匹配
 
     bool NeedNewKeyFrame();   // 判断是否需要插入新关键帧
