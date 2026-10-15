@@ -147,7 +147,7 @@ public:
 
     // 单目相关变量初始化 Initialization Variables (Monocular)
     std::vector<int> mvIniLastMatches;       // 初始化过程中上一帧的匹配索引
-    std::vector<int> mvIniMatches;           // 初始帧与参考帧的匹配索引
+    std::vector<int> mvIniMatches;           // 初始帧与当前帧的匹配索引
     std::vector<cv::Point2f> mvbPrevMatched; // 上一帧匹配的特征点坐标
     std::vector<cv::Point3f> mvIniP3D;       // 初始化三角化的三维点
     Frame mInitialFrame;                     // 单目初始帧
@@ -237,7 +237,7 @@ protected:
     bool mbMapUpdated; // 地图是否在本帧更新
 
     // Imu preintegration from last frame
-    IMU::Preintegrated *mpImuPreintegratedFromLastKF; // 帧间 IMU 预积分对象
+    IMU::Preintegrated *mpImuPreintegratedFromLastKF; // 上一关键帧到当前帧的 IMU 预积分对象
 
     // Queue of IMU measurements between frames
     std::list<IMU::Point> mlQueueImuData; // IMU 数据队列
@@ -299,7 +299,7 @@ protected:
     float mImageScale;   // 图像缩放系数
 
     float mImuFreq;      // IMU 采样率
-    double mImuPer;      // IMU 周期
+    double mImuPer;      // IMU 周期（采样时间间隔？？？）
     bool mInsertKFsLost; // 丢失时是否插入关键帧
 
     // 新关键帧插入规则（根据帧率） New KeyFrame rules (according to fps)
