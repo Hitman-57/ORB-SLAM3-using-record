@@ -160,7 +160,7 @@ public:
     list<bool> mlbLost;                      // 该帧是否丢失
 
     // frames with estimated pose
-    int mTrackedFr; // 成功跟踪帧数
+    int mTrackedFr; // 成功进入局部地图跟踪的帧数
     bool mbStep;    // 是否单步调试
 
     // True if local mapping is deactivated and we are performing only localization
@@ -212,7 +212,7 @@ protected:
 
     void CheckReplacedInLastFrame(); // 检查上一帧中是否有地图点被替换
     bool TrackReferenceKeyFrame();   // 基于参考关键帧做位姿估计
-    void UpdateLastFrame();          // 更新上一帧信息
+    void UpdateLastFrame();          // 更新上一帧信息（位姿，临时地图点）
     bool TrackWithMotionModel();     // 恒速运动模型做位姿估计
     bool PredictStateIMU();          // 使用 IMU 预积分做位姿估计
 
