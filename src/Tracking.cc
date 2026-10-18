@@ -3116,6 +3116,7 @@ bool Tracking::TrackLocalMap()
 // 关键帧决策
 bool Tracking::NeedNewKeyFrame()
 {
+    // IMU 模式且 IMU 尚未初始化，每 0.25s 插入一关键帧
     if((mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD) && !mpAtlas->GetCurrentMap()->isImuInitialized())
     {
         if (mSensor == System::IMU_MONOCULAR && (mCurrentFrame.mTimeStamp-mpLastKeyFrame->mTimeStamp)>=0.25)
@@ -3126,11 +3127,11 @@ bool Tracking::NeedNewKeyFrame()
             return false;
     }
 
-    if(mbOnlyTracking)
+    if(mbOnlyTracking) // 仅定位模式不插入关键帧
         return false;
 
     // If Local Mapping is freezed by a Loop Closure do not insert keyframes
-    if(mpLocalMapper->isStopped() || mpLocalMapper->stopRequested()) {
+    if(mpLocalMapper->isStopped() || mpLocalMapper->stopRequested()) { // 局部建图停止或请求停止时，不插入关键帧
         /*if(mSensor == System::MONOCULAR)
         {
             std::cout << "NeedNewKeyFrame: localmap stopped" << std::endl;
@@ -3138,28 +3139,28 @@ bool Tracking::NeedNewKeyFrame()
         return false;
     }
 
-    const int nKFs = mpAtlas->KeyFramesInMap();
+    const int nKFs = mpAtlas->KeyFramesInMap(); // 当前地图关键帧数量
 
     // Do not insert keyframes if not enough frames have passed from last relocalisation
-    if(mCurrentFrame.mnId<mnLastRelocFrameId+mMaxFrames && nKFs>mMaxFrames)
+    if(mCurrentFrame.mnId<mnLastRelocFrameId+mMaxFrames && nKFs>mMaxFrames) // 当前帧在 最后的重定位帧 + FPS 范围内 且 nKFs > FPS，不插入关键帧
     {
         return false;
     }
 
     // Tracked MapPoints in the reference keyframe
-    int nMinObs = 3;
-    if(nKFs<=2)
+    int nMinObs = 3; // 观测到地图点的最少关键帧数量
+    if(nKFs<=2) // 地图关键数小于 2，则减小 nMinObs
         nMinObs=2;
     int nRefMatches = mpReferenceKF->TrackedMapPoints(nMinObs);
 
     // Local Mapping accept keyframes?
-    bool bLocalMappingIdle = mpLocalMapper->AcceptKeyFrames();
+    bool bLocalMappingIdle = mpLocalMapper->AcceptKeyFrames(); // 局部建图是否接收关键帧
 
     // Check how many "close" points are being tracked and how many could be potentially created.
     int nNonTrackedClose = 0;
     int nTrackedClose= 0;
 
-    if(mSensor!=System::MONOCULAR && mSensor!=System::IMU_MONOCULAR)
+    if(mSensor!=System::MONOCULAR && mSensor!=System::IMU_MONOCULAR) // 非单目和单目 IMU
     {
         int N = (mCurrentFrame.Nleft == -1) ? mCurrentFrame.N : mCurrentFrame.Nleft;
         for(int i =0; i<N; i++)
@@ -3180,8 +3181,8 @@ bool Tracking::NeedNewKeyFrame()
     bNeedToInsertClose = (nTrackedClose<100) && (nNonTrackedClose>70);
 
     // Thresholds
-    float thRefRatio = 0.75f;
-    if(nKFs<2)
+    float thRefRatio = 0.75f; // 当前帧跟踪点数相对于参考关键帧跟踪点数的比例阈值 0.75
+    if(nKFs<2) // 地图关键帧数较少，阈值 0.4
         thRefRatio = 0.4f;
 
     /*int nClosedPoints = nTrackedClose + nNonTrackedClose;
@@ -3192,31 +3193,32 @@ bool Tracking::NeedNewKeyFrame()
         thRefRatio = 0.9f;
     }*/
 
-    if(mSensor==System::MONOCULAR)
+    if(mSensor==System::MONOCULAR) // 单目模式，阈值加到 0.9
         thRefRatio = 0.9f;
 
-    if(mpCamera2) thRefRatio = 0.75f;
+    if(mpCamera2) thRefRatio = 0.75f; // 鱼眼双目，阈值设回 0.75
 
-    if(mSensor==System::IMU_MONOCULAR)
+    if(mSensor==System::IMU_MONOCULAR) // 单目 IMU 模式
     {
         if(mnMatchesInliers>350) // Points tracked from the local map
-            thRefRatio = 0.75f;
+            thRefRatio = 0.75f; // 当前帧内点数 > 350，阈值 0.75
         else
-            thRefRatio = 0.90f;
+            thRefRatio = 0.90f; // 当前帧内点数 < 350，阈值 0.9
     }
 
-    // Condition 1a: More than "MaxFrames" have passed from last keyframe insertion
-    const bool c1a = mCurrentFrame.mnId>=mnLastKeyFrameId+mMaxFrames;
-    // Condition 1b: More than "MinFrames" have passed and Local Mapping is idle
-    const bool c1b = ((mCurrentFrame.mnId>=mnLastKeyFrameId+mMinFrames) && bLocalMappingIdle); //mpLocalMapper->KeyframesInQueue() < 2);
-    //Condition 1c: tracking is weak
+    // Condition 1a: More than "MaxFrames" have passed from last keyframe insertion，当前帧距上一关键帧的帧数 >= FPS
+    const bool c1a = mCurrentFrame.mnId>=mnLastKeyFrameId+mMaxFrames; 
+    // Condition 1b: More than "MinFrames" have passed and Local Mapping is idle，距上一关键帧 >= mMinFrames 且 局部建图空闲
+    const bool c1b = ((mCurrentFrame.mnId>=mnLastKeyFrameId+mMinFrames) && bLocalMappingIdle); 
+    //Condition 1c: tracking is weak，双目/ RGB-D 且 （当前帧内点数 < 参考关键帧跟踪点数的 25% 或 需要插入近点（bNeedToInsertClose == true））
     const bool c1c = mSensor!=System::MONOCULAR && mSensor!=System::IMU_MONOCULAR && mSensor!=System::IMU_STEREO && mSensor!=System::IMU_RGBD && (mnMatchesInliers<nRefMatches*0.25 || bNeedToInsertClose) ;
     // Condition 2: Few tracked points compared to reference keyframe. Lots of visual odometry compared to map matches.
+    // （当前帧内点数 < 参考关键帧跟踪点数 * thRefRatio 或 需要插入近点（bNeedToInsertClose == true）） 且 当前帧内点数 > 15
     const bool c2 = (((mnMatchesInliers<nRefMatches*thRefRatio || bNeedToInsertClose)) && mnMatchesInliers>15);
 
     //std::cout << "NeedNewKF: c1a=" << c1a << "; c1b=" << c1b << "; c1c=" << c1c << "; c2=" << c2 << std::endl;
     // Temporal condition for Inertial cases
-    bool c3 = false;
+    bool c3 = false; // IMU 模式下，存在上一关键帧 且 当前帧距上一关键帧的时间 >= 0.5s 时，c3 = true
     if(mpLastKeyFrame)
     {
         if (mSensor==System::IMU_MONOCULAR)
@@ -3231,26 +3233,26 @@ bool Tracking::NeedNewKeyFrame()
         }
     }
 
-    bool c4 = false;
+    bool c4 = false; // 单目 IMU 模式下，当前帧内点数在 15 到 75 之间，或状态为 RECENTLY_LOST 时，c4 = true
     if ((((mnMatchesInliers<75) && (mnMatchesInliers>15)) || mState==RECENTLY_LOST) && (mSensor == System::IMU_MONOCULAR)) // MODIFICATION_2, originally ((((mnMatchesInliers<75) && (mnMatchesInliers>15)) || mState==RECENTLY_LOST) && ((mSensor == System::IMU_MONOCULAR)))
         c4=true;
     else
         c4=false;
 
-    if(((c1a||c1b||c1c) && c2)||c3 ||c4)
+    if(((c1a||c1b||c1c) && c2)||c3 ||c4) //  满足 c1* + c2 或 c3 或 c4
     {
         // If the mapping accepts keyframes, insert keyframe.
         // Otherwise send a signal to interrupt BA
-        if(bLocalMappingIdle || mpLocalMapper->IsInitializing())
+        if(bLocalMappingIdle || mpLocalMapper->IsInitializing()) // 局部建图空闲 或 局部建图正在初始化
         {
-            return true;
+            return true; // 插入关键帧
         }
         else
         {
-            mpLocalMapper->InterruptBA();
-            if(mSensor!=System::MONOCULAR  && mSensor!=System::IMU_MONOCULAR)
+            mpLocalMapper->InterruptBA(); // 中断局部建图的 BA
+            if(mSensor!=System::MONOCULAR  && mSensor!=System::IMU_MONOCULAR) // 非单目和单目 IMU
             {
-                if(mpLocalMapper->KeyframesInQueue()<3)
+                if(mpLocalMapper->KeyframesInQueue()<3) // 局部建图的关键帧队列 < 3 时，插入关键帧
                     return true;
                 else
                     return false;
@@ -3269,22 +3271,22 @@ bool Tracking::NeedNewKeyFrame()
 // 创建新的关键帧
 void Tracking::CreateNewKeyFrame()
 {
-    if(mpLocalMapper->IsInitializing() && !mpAtlas->isImuInitialized())
+    if(mpLocalMapper->IsInitializing() && !mpAtlas->isImuInitialized()) // 局部建图正在初始化 且 IMU 未初始化，不创建新关键帧
         return;
 
-    if(!mpLocalMapper->SetNotStop(true))
+    if(!mpLocalMapper->SetNotStop(true)) // 请求局部建图线程不要停止，不创建新关键帧
         return;
 
-    KeyFrame* pKF = new KeyFrame(mCurrentFrame,mpAtlas->GetCurrentMap(),mpKeyFrameDB);
+    KeyFrame* pKF = new KeyFrame(mCurrentFrame,mpAtlas->GetCurrentMap(),mpKeyFrameDB); // 用当前帧创建新关键帧
 
     if(mpAtlas->isImuInitialized()) //  || mpLocalMapper->IsInitializing())
-        pKF->bImu = true;
+        pKF->bImu = true; // IMU 初始化已完成，则设新关键帧的 bImu 标志为 true
 
-    pKF->SetNewBias(mCurrentFrame.mImuBias);
-    mpReferenceKF = pKF;
-    mCurrentFrame.mpReferenceKF = pKF;
+    pKF->SetNewBias(mCurrentFrame.mImuBias); // 将当前帧的 IMU 偏置传给新关键帧
+    mpReferenceKF = pKF; // 跟踪线程的参考关键帧更新为新关键帧
+    mCurrentFrame.mpReferenceKF = pKF; // 当前帧的参考关键帧也更新为新关键帧
 
-    if(mpLastKeyFrame)
+    if(mpLastKeyFrame) // 存在上一关键帧时，建立上一关键帧与当前关键帧之间的联系
     {
         pKF->mPrevKF = mpLastKeyFrame;
         mpLastKeyFrame->mNextKF = pKF;
@@ -3293,11 +3295,12 @@ void Tracking::CreateNewKeyFrame()
         Verbose::PrintMess("No last KF in KF creation!!", Verbose::VERBOSITY_NORMAL);
 
     // Reset preintegration from last KF (Create new object)
-    if (mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD)
+    if (mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD) // IMU 模式下
     {
-        mpImuPreintegratedFromLastKF = new IMU::Preintegrated(pKF->GetImuBias(),pKF->mImuCalib);
+        mpImuPreintegratedFromLastKF = new IMU::Preintegrated(pKF->GetImuBias(),pKF->mImuCalib); // 重置上一关键帧到当前帧的预积分
     }
 
+    // 非单目和单目 IMU，则创建新地图点
     if(mSensor!=System::MONOCULAR && mSensor != System::IMU_MONOCULAR) // TODO check if incluide imu_stereo
     {
         mCurrentFrame.UpdatePoseMatrices();
@@ -3386,12 +3389,12 @@ void Tracking::CreateNewKeyFrame()
     }
 
 
-    mpLocalMapper->InsertKeyFrame(pKF);
+    mpLocalMapper->InsertKeyFrame(pKF); // 将新关键帧插入局部建图线程的关键帧队列
 
-    mpLocalMapper->SetNotStop(false);
+    mpLocalMapper->SetNotStop(false); // 恢复局部建图的正常停止行为
 
-    mnLastKeyFrameId = mCurrentFrame.mnId;
-    mpLastKeyFrame = pKF;
+    mnLastKeyFrameId = mCurrentFrame.mnId; // 将上一关键帧 ID 设为当前帧 ID
+    mpLastKeyFrame = pKF; // 将上一关键帧设为当前关键帧
 }
 
 
@@ -3400,73 +3403,75 @@ void Tracking::CreateNewKeyFrame()
 void Tracking::SearchLocalPoints()
 {
     // Do not search map points already matched
+    // 遍历当前帧的地图点匹配
     for(vector<MapPoint*>::iterator vit=mCurrentFrame.mvpMapPoints.begin(), vend=mCurrentFrame.mvpMapPoints.end(); vit!=vend; vit++)
     {
         MapPoint* pMP = *vit;
-        if(pMP)
+        if(pMP) // 匹配不为空
         {
-            if(pMP->isBad())
+            if(pMP->isBad()) // 坏点清理
             {
-                *vit = static_cast<MapPoint*>(NULL);
+                *vit = static_cast<MapPoint*>(NULL); // 置空
             }
             else
             {
-                pMP->IncreaseVisible();
-                pMP->mnLastFrameSeen = mCurrentFrame.mnId;
-                pMP->mbTrackInView = false;
-                pMP->mbTrackInViewR = false;
+                pMP->IncreaseVisible(); // 被当前帧看到的地图点 +1（默认）
+                pMP->mnLastFrameSeen = mCurrentFrame.mnId; // 设当前帧为看到该地图点的上一帧
+                pMP->mbTrackInView = false; // 重置该地图点“在视野内”标志
+                pMP->mbTrackInViewR = false; // 重置该地图点“在视野内”标志（右目）
             }
         }
     }
 
-    int nToMatch=0;
+    int nToMatch=0; // 待匹配计数
 
     // Project points in frame and check its visibility
-    for(vector<MapPoint*>::iterator vit=mvpLocalMapPoints.begin(), vend=mvpLocalMapPoints.end(); vit!=vend; vit++)
+    for(vector<MapPoint*>::iterator vit=mvpLocalMapPoints.begin(), vend=mvpLocalMapPoints.end(); vit!=vend; vit++) // 遍历局部地图点
     {
         MapPoint* pMP = *vit;
 
-        if(pMP->mnLastFrameSeen == mCurrentFrame.mnId)
+        if(pMP->mnLastFrameSeen == mCurrentFrame.mnId) // 跳过当前帧已处理过的地图点
             continue;
-        if(pMP->isBad())
+        if(pMP->isBad()) // 跳过坏点
             continue;
         // Project (this fills MapPoint variables for matching)
-        if(mCurrentFrame.isInFrustum(pMP,0.5))
+        if(mCurrentFrame.isInFrustum(pMP,0.5)) // 该地图点在当前帧相机视野内
         {
-            pMP->IncreaseVisible();
-            nToMatch++;
+            pMP->IncreaseVisible(); // 被当前帧看到的地图点 +1（默认）
+            nToMatch++; // 待匹配计数 +1
         }
-        if(pMP->mbTrackInView)
+        if(pMP->mbTrackInView) // 保存投影坐标
         {
             mCurrentFrame.mmProjectPoints[pMP->mnId] = cv::Point2f(pMP->mTrackProjX, pMP->mTrackProjY);
         }
     }
 
-    if(nToMatch>0)
+    if(nToMatch>0) // 存在待匹配点
     {
-        ORBmatcher matcher(0.8);
-        int th = 1;
-        if(mSensor==System::RGBD || mSensor==System::IMU_RGBD)
+        ORBmatcher matcher(0.8); // 特征匹配器
+        int th = 1; // 搜索半径
+        if(mSensor==System::RGBD || mSensor==System::IMU_RGBD) // 扩大 RGB-D / RGB-D IMU 模式下的 th 值
             th=3;
-        if(mpAtlas->isImuInitialized())
+        if(mpAtlas->isImuInitialized()) // IMU 已初始化
         {
-            if(mpAtlas->GetCurrentMap()->GetIniertialBA2())
+            if(mpAtlas->GetCurrentMap()->GetIniertialBA2()) // 二次惯性 BA 已完成
                 th=2;
-            else
+            else // IMU 刚初始化
                 th=6;
         }
         else if(!mpAtlas->isImuInitialized() && (mSensor==System::IMU_MONOCULAR || mSensor==System::IMU_STEREO || mSensor == System::IMU_RGBD))
         {
-            th=10;
+            th=10; // IMU 模式但还未完成 IMU 初始化
         }
 
         // If the camera has been relocalised recently, perform a coarser search
-        if(mCurrentFrame.mnId<mnLastRelocFrameId+2)
+        if(mCurrentFrame.mnId<mnLastRelocFrameId+2) // 刚进行重定位（重定位后 2 帧内）的 th 值
             th=5;
 
-        if(mState==LOST || mState==RECENTLY_LOST) // Lost for less than 1 second
+        if(mState==LOST || mState==RECENTLY_LOST) // LOST 或 RECENTLY_LOST 状态 的 th 值 Lost for less than 1 second
             th=15; // 15
 
+        // 进行投影匹配
         int matches = matcher.SearchByProjection(mCurrentFrame, mvpLocalMapPoints, th, mpLocalMapper->mbFarPoints, mpLocalMapper->mThFarPoints);
     }
 }
