@@ -33,7 +33,7 @@
 namespace ORB_SLAM3
 {
 
-long unsigned int Frame::nNextId=0;
+long unsigned int Frame::nNextId=0; // 全局帧 ID 计数
 bool Frame::mbInitialComputations=true;
 float Frame::cx, Frame::cy, Frame::fx, Frame::fy, Frame::invfx, Frame::invfy;
 float Frame::mnMinX, Frame::mnMinY, Frame::mnMaxX, Frame::mnMaxY;
@@ -42,6 +42,7 @@ float Frame::mfGridElementWidthInv, Frame::mfGridElementHeightInv;
 //For stereo fisheye matching
 cv::BFMatcher Frame::BFmatcher = cv::BFMatcher(cv::NORM_HAMMING);
 
+// 构造函数
 Frame::Frame(): mpcpi(NULL), mpImuPreintegrated(NULL), mpPrevFrame(NULL), mpImuPreintegratedFrame(NULL), mpReferenceKF(static_cast<KeyFrame*>(NULL)), mbIsSet(false), mbImuPreintegrated(false), mbHasPose(false), mbHasVelocity(false)
 {
 #ifdef REGISTER_TIMES
@@ -51,7 +52,8 @@ Frame::Frame(): mpcpi(NULL), mpImuPreintegrated(NULL), mpPrevFrame(NULL), mpImuP
 }
 
 
-//Copy Constructor
+
+// Frame 类型拷贝 Copy Constructor
 Frame::Frame(const Frame &frame)
     :mpcpi(frame.mpcpi),mpORBvocabulary(frame.mpORBvocabulary), mpORBextractorLeft(frame.mpORBextractorLeft), mpORBextractorRight(frame.mpORBextractorRight),
      mTimeStamp(frame.mTimeStamp), mK(frame.mK.clone()), mK_(Converter::toMatrix3f(frame.mK)), mDistCoef(frame.mDistCoef.clone()),
@@ -98,30 +100,31 @@ Frame::Frame(const Frame &frame)
 }
 
 
+// 双目（左图，右图，图像时间戳，左图特征提取器，右图特征提取器，ORB 词袋，相机内参（opencv），畸变系数（opencv），基线*焦距，远点阈值，左相机几何模型，上一帧，IMU 参数）
 Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeStamp, ORBextractor* extractorLeft, ORBextractor* extractorRight, ORBVocabulary* voc, cv::Mat &K, cv::Mat &distCoef, const float &bf, const float &thDepth, GeometricCamera* pCamera, Frame* pPrevF, const IMU::Calib &ImuCalib)
     :mpcpi(NULL), mpORBvocabulary(voc),mpORBextractorLeft(extractorLeft),mpORBextractorRight(extractorRight), mTimeStamp(timeStamp), mK(K.clone()), mK_(Converter::toMatrix3f(K)), mDistCoef(distCoef.clone()), mbf(bf), mThDepth(thDepth),
      mImuCalib(ImuCalib), mpImuPreintegrated(NULL), mpPrevFrame(pPrevF),mpImuPreintegratedFrame(NULL), mpReferenceKF(static_cast<KeyFrame*>(NULL)), mbIsSet(false), mbImuPreintegrated(false),
      mpCamera(pCamera) ,mpCamera2(nullptr), mbHasPose(false), mbHasVelocity(false)
 {
     // Frame ID
-    mnId=nNextId++;
+    mnId=nNextId++; // 分配当前帧 ID 并计算下一帧 ID（+1）
 
     // Scale Level Info
-    mnScaleLevels = mpORBextractorLeft->GetLevels();
-    mfScaleFactor = mpORBextractorLeft->GetScaleFactor();
-    mfLogScaleFactor = log(mfScaleFactor);
-    mvScaleFactors = mpORBextractorLeft->GetScaleFactors();
-    mvInvScaleFactors = mpORBextractorLeft->GetInverseScaleFactors();
-    mvLevelSigma2 = mpORBextractorLeft->GetScaleSigmaSquares();
-    mvInvLevelSigma2 = mpORBextractorLeft->GetInverseScaleSigmaSquares();
+    mnScaleLevels = mpORBextractorLeft->GetLevels(); // 金字塔层数
+    mfScaleFactor = mpORBextractorLeft->GetScaleFactor(); // 缩放因子
+    mfLogScaleFactor = log(mfScaleFactor); // log(缩放因子)
+    mvScaleFactors = mpORBextractorLeft->GetScaleFactors(); // 各层缩放尺度
+    mvInvScaleFactors = mpORBextractorLeft->GetInverseScaleFactors(); // 各层缩放尺度倒数
+    mvLevelSigma2 = mpORBextractorLeft->GetScaleSigmaSquares(); // 缩放尺度方差
+    mvInvLevelSigma2 = mpORBextractorLeft->GetInverseScaleSigmaSquares(); // 缩放尺度方差倒数
 
     // ORB extraction
-#ifdef REGISTER_TIMES
+#ifdef REGISTER_TIMES // 特征提取耗时记录
     std::chrono::steady_clock::time_point time_StartExtORB = std::chrono::steady_clock::now();
 #endif
-    thread threadLeft(&Frame::ExtractORB,this,0,imLeft,0,0);
-    thread threadRight(&Frame::ExtractORB,this,1,imRight,0,0);
-    threadLeft.join();
+    thread threadLeft(&Frame::ExtractORB,this,0,imLeft,0,0); // 左图特征提取线程，保存到 mvKeys 和 mDescriptors
+    thread threadRight(&Frame::ExtractORB,this,1,imRight,0,0); // 右图特征提取线程，保存到 mvKeysRight 和 mDescriptorsRight
+    threadLeft.join(); // 等待两线程结束
     threadRight.join();
 #ifdef REGISTER_TIMES
     std::chrono::steady_clock::time_point time_EndExtORB = std::chrono::steady_clock::now();
@@ -129,38 +132,44 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
     mTimeORB_Ext = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(time_EndExtORB - time_StartExtORB).count();
 #endif
 
-    N = mvKeys.size();
-    if(mvKeys.empty())
+    N = mvKeys.size(); // 统计左图特征点数
+    if(mvKeys.empty()) // 左图特征点数为 0，直接 return
         return;
 
-    UndistortKeyPoints();
+    UndistortKeyPoints(); // 对 mvKeys 的特征点去畸变，保存到 mvKeysUn
 
-#ifdef REGISTER_TIMES
+#ifdef REGISTER_TIMES // 双目匹配耗时记录
     std::chrono::steady_clock::time_point time_StartStereoMatches = std::chrono::steady_clock::now();
 #endif
-    ComputeStereoMatches();
+    ComputeStereoMatches(); // 计算左图和右图匹配的特征点的深度，第 i 个左目特征匹配到的右目亚像素横坐标写入 mvuRight[i]，深度写入 mvDepth[i]
 #ifdef REGISTER_TIMES
     std::chrono::steady_clock::time_point time_EndStereoMatches = std::chrono::steady_clock::now();
 
     mTimeStereoMatch = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(time_EndStereoMatches - time_StartStereoMatches).count();
 #endif
 
-    mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));
-    mvbOutlier = vector<bool>(N,false);
-    mmProjectPoints.clear();
-    mmMatchedInImage.clear();
+    mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL)); // 左特征关联的地图点，构造时全为空，追踪时填充
+    mvbOutlier = vector<bool>(N,false); // 该特征是否被判定为外点，初始全为 false
+    mmProjectPoints.clear(); // 投影点（可视化）
+    mmMatchedInImage.clear(); // 匹配（可视化）
 
 
     // This is done only for the first Frame (or after a change in the calibration)
-    if(mbInitialComputations)
+    if(mbInitialComputations) // 仅首帧执行
     {
-        ComputeImageBounds(imLeft);
+        /*
+                原图（有畸变）                    去畸变后
+        (0,0)────────(W,0)              (mnMinX,mnMinY)────(mnMaxX,mnMinY)
+        │              │        →            │                  │
+        (0,H)────────(W,H)              (mnMinX,mnMaxY)────(mnMaxX,mnMaxY)
+        */
+        ComputeImageBounds(imLeft); // 把原图四个角点做去畸变，得到它们在“去畸变后图像”中的坐标，然后取包围盒
 
+        // 网格换算系数
         mfGridElementWidthInv=static_cast<float>(FRAME_GRID_COLS)/(mnMaxX-mnMinX);
         mfGridElementHeightInv=static_cast<float>(FRAME_GRID_ROWS)/(mnMaxY-mnMinY);
 
-
-
+        // 缓存相机内参
         fx = K.at<float>(0,0);
         fy = K.at<float>(1,1);
         cx = K.at<float>(0,2);
@@ -171,21 +180,21 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
         mbInitialComputations=false;
     }
 
-    mb = mbf/fx;
+    mb = mbf/fx; // 基线长度
 
-    if(pPrevF)
+    if(pPrevF) // 是否存在上一帧
     {
         if(pPrevF->HasVelocity())
-            SetVelocity(pPrevF->GetVelocity());
+            SetVelocity(pPrevF->GetVelocity()); // IMU 模式下用上一帧速度（存在时）作为本帧初值（匀速模型预测用）
     }
     else
     {
-        mVw.setZero();
+        mVw.setZero(); // 没有上一帧则世界速度置零
     }
 
-    mpMutexImu = new std::mutex();
+    mpMutexImu = new std::mutex(); // IMU 是否预积分 保护锁
 
-    //Set no stereo fisheye information
+    //Set no stereo fisheye information，把鱼眼双目专用成员设成“未启用”
     Nleft = -1;
     Nright = -1;
     mvLeftToRightMatch = vector<int>(0);
@@ -194,9 +203,12 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
     monoLeft = -1;
     monoRight = -1;
 
-    AssignFeaturesToGrid();
+    // 把每个特征按坐标塞进 64×48 网格，因为 Nleft==-1，使用 mvKeysUn（去畸变坐标）
+    // 把每一帧提取到的 ORB 特征按它们在图像中的位置分桶存放。这样，“在某个像素坐标附近找候选特征”就不用遍历全图所有特征，只需访问附近几个格子
+    AssignFeaturesToGrid(); 
 }
 
+// RGB-D
 Frame::Frame(const cv::Mat &imGray, const cv::Mat &imDepth, const double &timeStamp, ORBextractor* extractor,ORBVocabulary* voc, cv::Mat &K, cv::Mat &distCoef, const float &bf, const float &thDepth, GeometricCamera* pCamera,Frame* pPrevF, const IMU::Calib &ImuCalib)
     :mpcpi(NULL),mpORBvocabulary(voc),mpORBextractorLeft(extractor),mpORBextractorRight(static_cast<ORBextractor*>(NULL)),
      mTimeStamp(timeStamp), mK(K.clone()), mK_(Converter::toMatrix3f(K)),mDistCoef(distCoef.clone()), mbf(bf), mThDepth(thDepth),
@@ -285,7 +297,7 @@ Frame::Frame(const cv::Mat &imGray, const cv::Mat &imDepth, const double &timeSt
     AssignFeaturesToGrid();
 }
 
-
+// 单目
 Frame::Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extractor,ORBVocabulary* voc, GeometricCamera* pCamera, cv::Mat &distCoef, const float &bf, const float &thDepth, Frame* pPrevF, const IMU::Calib &ImuCalib)
     :mpcpi(NULL),mpORBvocabulary(voc),mpORBextractorLeft(extractor),mpORBextractorRight(static_cast<ORBextractor*>(NULL)),
      mTimeStamp(timeStamp), mK(static_cast<Pinhole*>(pCamera)->toK()), mK_(static_cast<Pinhole*>(pCamera)->toK_()), mDistCoef(distCoef.clone()), mbf(bf), mThDepth(thDepth),
@@ -382,6 +394,7 @@ Frame::Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extra
 }
 
 
+
 void Frame::AssignFeaturesToGrid()
 {
     // Fill matrix with points
@@ -401,6 +414,9 @@ void Frame::AssignFeaturesToGrid()
 
     for(int i=0;i<N;i++)
     {
+        // (Nleft == -1) = true，针孔相机，&kp = mvKeysUn[i]
+        // (Nleft == -1) = false && (i < Nleft) = true，鱼眼相机，左目，&kp = mvKeys[i]
+        // (Nleft ！= -1) = false && (i < Nleft) = false，鱼眼相机，右目，&kp = mvKeysRight[i - Nleft]
         const cv::KeyPoint &kp = (Nleft == -1) ? mvKeysUn[i]
                                                  : (i < Nleft) ? mvKeys[i]
                                                                  : mvKeysRight[i - Nleft];
@@ -415,6 +431,7 @@ void Frame::AssignFeaturesToGrid()
     }
 }
 
+// 特征提取
 void Frame::ExtractORB(int flag, const cv::Mat &im, const int x0, const int x1)
 {
     vector<int> vLapping = {x0,x1};
@@ -744,6 +761,7 @@ void Frame::ComputeBoW()
     }
 }
 
+// 特征点去畸变
 void Frame::UndistortKeyPoints()
 {
     if(mDistCoef.at<float>(0)==0.0)
@@ -808,6 +826,7 @@ void Frame::ComputeImageBounds(const cv::Mat &imLeft)
     }
 }
 
+// 双目匹配
 void Frame::ComputeStereoMatches()
 {
     mvuRight = vector<float>(N,-1.0f);
@@ -980,7 +999,6 @@ void Frame::ComputeStereoMatches()
     }
 }
 
-
 void Frame::ComputeStereoFromRGBD(const cv::Mat &imDepth)
 {
     mvuRight = vector<float>(N,-1);
@@ -1031,6 +1049,7 @@ void Frame::setIntegrated()
     mbImuPreintegrated = true;
 }
 
+// 鱼眼双目
 Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeStamp, ORBextractor* extractorLeft, ORBextractor* extractorRight, ORBVocabulary* voc, cv::Mat &K, cv::Mat &distCoef, const float &bf, const float &thDepth, GeometricCamera* pCamera, GeometricCamera* pCamera2, Sophus::SE3f& Tlr,Frame* pPrevF, const IMU::Calib &ImuCalib)
         :mpcpi(NULL), mpORBvocabulary(voc),mpORBextractorLeft(extractorLeft),mpORBextractorRight(extractorRight), mTimeStamp(timeStamp), mK(K.clone()), mK_(Converter::toMatrix3f(K)),  mDistCoef(distCoef.clone()), mbf(bf), mThDepth(thDepth),
          mImuCalib(ImuCalib), mpImuPreintegrated(NULL), mpPrevFrame(pPrevF),mpImuPreintegratedFrame(NULL), mpReferenceKF(static_cast<KeyFrame*>(NULL)), mbImuPreintegrated(false), mpCamera(pCamera), mpCamera2(pCamera2),
