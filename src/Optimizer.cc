@@ -41,14 +41,15 @@
 
 #include "OptimizableTypes.h"
 
-
 namespace ORB_SLAM3
 {
+// 排序
 bool sortByVal(const pair<MapPoint*, int> &a, const pair<MapPoint*, int> &b)
 {
     return (a.second < b.second);
 }
 
+// 全局 BA（BundleAdjustment）的简单封装
 void Optimizer::GlobalBundleAdjustemnt(Map* pMap, int nIterations, bool* pbStopFlag, const unsigned long nLoopKF, const bool bRobust)
 {
     vector<KeyFrame*> vpKFs = pMap->GetAllKeyFrames();
@@ -56,7 +57,14 @@ void Optimizer::GlobalBundleAdjustemnt(Map* pMap, int nIterations, bool* pbStopF
     BundleAdjustment(vpKFs,vpMP,nIterations,pbStopFlag, nLoopKF, bRobust);
 }
 
-
+// Tracking.cc
+// 单目初始化建图后的全局 BA
+// 目标：重投影误差
+// 优化：全部 KF 位姿 + 全部地图点
+// LoopClosing.cc
+// GBA 线程：视觉全局 BA
+// 目标：视觉重投影
+// 优化：全部 KF 位姿 + 地图点
 void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<MapPoint *> &vpMP,
                                  int nIterations, bool* pbStopFlag, const unsigned long nLoopKF, const bool bRobust)
 {
@@ -389,6 +397,14 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
     }
 }
 
+// LocalMapping.cc
+// IMU 初始化 / 全局视觉-惯性 BA，IMU 初始化完成后的全图联合优化，也是惯性 GBA
+// 目标：EdgeInertial + EdgeGyroRW/AccRW + 视觉重投影；初始化模式再加零偏先验 EdgePriorAcc/Gyro
+// 优化：全部 KF 的  位姿(6) + 速度(3) + 陀螺零偏(3) + 加速度零偏(3) + 全部地图点（3，边缘化）；bInit=true 时零偏合并为一组公共零偏
+// LoopClosing.cc
+// GBA 线程：惯性全局 BA
+// 目标：IMU + 视觉 + 零偏 RW
+// 优化：全部 KF 的  位姿(6) + 速度(3) + 陀螺零偏(3) + 加速度零偏(3) + 全部地图点（3，边缘化）；bInit=true 时零偏合并为一组公共零偏
 void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const long unsigned int nLoopId, bool *pbStopFlag, bool bInit, float priorG, float priorA, Eigen::VectorXd *vSingVal, bool *bHess)
 {
     long unsigned int maxKFid = pMap->GetMaxKFid();
@@ -810,7 +826,10 @@ void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const l
     pMap->IncreaseChangeIndex();
 }
 
-
+// Tracking.cc
+// 纯视觉跟踪 / 重定位，用当前帧的 2D 观测修正当前帧位姿
+// 目标：最小化所有有效特征点的投影误差
+// 优化：当前帧位姿（6 DoF）
 int Optimizer::PoseOptimization(Frame *pFrame)
 {
     g2o::SparseOptimizer optimizer;
@@ -1113,6 +1132,10 @@ int Optimizer::PoseOptimization(Frame *pFrame)
     return nInitialCorrespondences-nBad;
 }
 
+// LocalMapping.cc
+// 纯视觉局部 BA，局部建图时优化当前 KF 附近的窗口
+// 目标：局部 KF + 固定 KF 对局部地图点的重投影误差
+// 优化：① 局部 KF 位姿（当前 KF + 共视 KF，各 6 DoF）；② 局部地图点 3D 坐标（3 DoF，marginalized，求解时 Schur 消元）
 void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap, int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges)
 {
     // Local KeyFrames: First Breath Search from Current Keyframe
@@ -1497,7 +1520,10 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
     pMap->IncreaseChangeIndex();
 }
 
-
+// LoopClosing.cc
+// 视觉回环位姿图，视觉回环闭合后，全局校正关键帧位姿
+// 目标：位姿图残差：新回环连接边 + 生成树边 + 历史回环边 + 共视边 + 惯性 mPrevKF 边，信息阵 7×7 单位阵
+// 优化：所有非坏 KF 的 Sim3 位姿（7 DoF；bFixScale=true 时尺度固定 → 6 DoF）
 void Optimizer::OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,
                                        const LoopClosing::KeyFrameAndPose &NonCorrectedSim3,
                                        const LoopClosing::KeyFrameAndPose &CorrectedSim3,
@@ -1782,6 +1808,10 @@ void Optimizer::OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* p
     pMap->IncreaseChangeIndex();
 }
 
+// LoopClosing.cc
+// 地图合并位姿图，两张地图合并后，把旧地图 KF 对齐到当前地图
+// 目标：Sim3 位姿图残差（生成树/回环/共视），且只在两端位姿“同源”时建边（vpGoodPose/vpBadPose 判断
+// 优化：仅 vpNonFixedKFs 的 Sim3 位姿
 void Optimizer::OptimizeEssentialGraph(KeyFrame* pCurKF, vector<KeyFrame*> &vpFixedKFs, vector<KeyFrame*> &vpFixedCorrectedKFs,
                                        vector<KeyFrame*> &vpNonFixedKFs, vector<MapPoint*> &vpNonCorrectedMPs)
 {
@@ -2112,6 +2142,10 @@ void Optimizer::OptimizeEssentialGraph(KeyFrame* pCurKF, vector<KeyFrame*> &vpFi
     }
 }
 
+// LoopClosing.cc
+// 回环候选验证，求 KF1 与 KF2 之间的相对 Sim3
+// 目标：双向重投影：X2 经 S12 投到 KF1、X1 经 S12⁻¹ 投到 KF2
+// 优化：相对位姿 S12（1 个 VertexSim3Expmap，7 DoF；bFixScale=true 时尺度固定，退化为 6 DoF）
 int Optimizer::OptimizeSim3(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPoint *> &vpMatches1, g2o::Sim3 &g2oS12, const float th2,
                             const bool bFixScale, Eigen::Matrix<double,7,7> &mAcumHessian, const bool bAllPoints)
 {
@@ -2380,6 +2414,10 @@ int Optimizer::OptimizeSim3(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPoint *> &
     return nIn;
 }
 
+// LocalMapping.cc
+// 视觉-惯性局部 BA，惯性模式下局部建图的主 BA
+// 目标：① 视觉重投影；② 相邻 KF 的 EdgeInertial；③ 零偏 RW。窗口最后一条 IMU 边乘 1e-2 降权，避免固定边界误差累积
+// 优化：时间窗口内的 KF 的 pose（bImu=true 时再加 vel/bias）+ 局部地图点
 void Optimizer::LocalInertialBA(KeyFrame *pKF, bool *pbStopFlag, Map *pMap, int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges, bool bLarge, bool bRecInit)
 {
     Map* pCurrentMap = pKF->GetMap();
@@ -2957,6 +2995,7 @@ void Optimizer::LocalInertialBA(KeyFrame *pKF, bool *pbStopFlag, Map *pMap, int&
     pMap->IncreaseChangeIndex();
 }
 
+// Schur 补边缘化工具
 Eigen::MatrixXd Optimizer::Marginalize(const Eigen::MatrixXd &H, const int &start, const int &end)
 {
     // Goal
@@ -3039,6 +3078,10 @@ Eigen::MatrixXd Optimizer::Marginalize(const Eigen::MatrixXd &H, const int &star
     return res;
 }
 
+// LocalMapping.cc
+// IMU 初始化阶段，从已有视觉地图中估计重力方向、尺度、零偏、速度
+// 目标：EdgeInertialGS 残差（预积分 + 重力方向 + 尺度）+ 零偏先验
+// 优化：每 KF 速度(3)；全局陀螺零偏(3)、加速度零偏(3)；重力方向 VertexGDir(2)；尺度 VertexScale(1，仅单目)
 void Optimizer::InertialOptimization(Map *pMap, Eigen::Matrix3d &Rwg, double &scale, Eigen::Vector3d &bg, Eigen::Vector3d &ba, bool bMono, Eigen::MatrixXd  &covInertial, bool bFixedVel, bool bGauss, float priorG, float priorA)
 {
     Verbose::PrintMess("inertial optimization", Verbose::VERBOSITY_NORMAL);
@@ -3223,7 +3266,10 @@ void Optimizer::InertialOptimization(Map *pMap, Eigen::Matrix3d &Rwg, double &sc
     }
 }
 
-
+// LoopClosing.cc
+// 合并后惯性状态精化
+// 目标：EdgeInertialGS + 零偏先验
+// 优化：所有 KF 速度 + 全局 bg/ba
 void Optimizer::InertialOptimization(Map *pMap, Eigen::Vector3d &bg, Eigen::Vector3d &ba, float priorG, float priorA)
 {
     int its = 200; // Check number of iterations
@@ -3386,6 +3432,10 @@ void Optimizer::InertialOptimization(Map *pMap, Eigen::Vector3d &bg, Eigen::Vect
     }
 }
 
+// LocalMapping.cc
+// 快速精化地图尺度和重力方向
+// 目标：EdgeInertialGS 残差
+// 优化：VertexGDir(2) + VertexScale(1)
 void Optimizer::InertialOptimization(Map *pMap, Eigen::Matrix3d &Rwg, double &scale)
 {
     int its = 10;
@@ -3495,6 +3545,10 @@ void Optimizer::InertialOptimization(Map *pMap, Eigen::Matrix3d &Rwg, double &sc
     Rwg = VGDir->estimate().Rwg;
 }
 
+// LoopClosing.cc
+// 地图合并后，在焊接区做一次纯视觉局部 BA
+// 目标：两个 KF 集合对收集到的地图点的鲁棒重投影误差
+// 优化：vpAdjustKF 的位姿(6) + 焊接区地图点(3，边缘化)
 void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdjustKF, vector<KeyFrame*> vpFixedKF, bool *pbStopFlag)
 {
     bool bShowImages = false;
@@ -3944,7 +3998,10 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
     }
 }
 
-
+// LoopClosing.cc
+// 惯性地图合并时，联合优化两张地图接缝处的状态
+// 目标：EdgeInertial + 零偏 RW + 视觉重投影
+// 优化：两个时间窗口（当前 KF 前 6 帧 + 合并 KF 及其邻帧，最多 12 帧）以及最多 30 个共视 KF 的 pose；窗口内地图点(3，边缘化)
 void Optimizer::MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, bool *pbStopFlag, Map *pMap, LoopClosing::KeyFrameAndPose &corrPoses)
 {
     const int Nd = 6;
@@ -4488,6 +4545,10 @@ void Optimizer::MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, bool *pbS
     pMap->IncreaseChangeIndex();
 }
 
+// Tracking.cc
+// 惯性跟踪（上一帧是关键帧），联合视觉 + IMU 估计当前帧状态
+// 目标：① 当前帧视觉重投影残差；② 上一 KF→当前帧的 EdgeInertial 预积分残差；③ 两帧零偏之间的 EdgeGyroRW/EdgeAccRW（零偏随机游走）
+// 优化：当前帧：位姿 6 + 速度 3 + 陀螺零偏 3 + 加速度零偏 3 = 15 DoF
 int Optimizer::PoseInertialOptimizationLastKeyFrame(Frame *pFrame, bool bRecInit)
 {
     g2o::SparseOptimizer optimizer;
@@ -4872,6 +4933,10 @@ int Optimizer::PoseInertialOptimizationLastKeyFrame(Frame *pFrame, bool bRecInit
     return nInitialCorrespondences-nBad;
 }
 
+// Tracking.cc
+// 惯性跟踪（上一帧是普通帧），联合优化当前帧和上一帧
+// 目标：① 当前帧视觉重投影；② 帧间 EdgeInertial；③ 零偏 RW；④ 上一帧的 EdgePriorPoseImu 先验
+// 优化：当前帧 pose/vel/bg/ba + 上一帧 pose/vel/bg/ba，共 30 DoF
 int Optimizer::PoseInertialOptimizationLastFrame(Frame *pFrame, bool bRecInit)
 {
     g2o::SparseOptimizer optimizer;
@@ -5289,6 +5354,10 @@ int Optimizer::PoseInertialOptimizationLastFrame(Frame *pFrame, bool bRecInit)
     return nInitialCorrespondences-nBad;
 }
 
+// LoopClosing.cc
+// 惯性回环位姿图，惯性地图回环闭合，保持 roll/pitch 与重力对齐
+// 目标：Edge4DoF 相对位姿残差：回环连接边 + mPrevKF 惯性边 + 历史回环边 + 共视边（生成树分支是死代码，实际不加
+// 优化：所有 KF 的 4 DoF 位姿（yaw + 3 维平移；roll/pitch 由重力固定
 void Optimizer::OptimizeEssentialGraph4DoF(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,
                                        const LoopClosing::KeyFrameAndPose &NonCorrectedSim3,
                                        const LoopClosing::KeyFrameAndPose &CorrectedSim3,
